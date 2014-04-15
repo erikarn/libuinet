@@ -54,6 +54,8 @@ passive_sysctl_listener(void *arg)
 	struct sockaddr_un sun;
 	char *rbuf, *wbuf = NULL;
 
+	uinet_initialize_thread();
+
 	rbuf = malloc(SYSCTL_BUF_LEN);
 	if (rbuf == NULL) {
 		printf("%s: malloc failed: %d\n", __func__, errno);
@@ -99,6 +101,7 @@ passive_sysctl_listener(void *arg)
 		size_t rval;
 		int error;
 		struct sysctl_resp_hdr rhdr;
+		int rlen = 0;
 
 		bzero(&rhdr, sizeof(rhdr));
 
@@ -108,40 +111,60 @@ passive_sysctl_listener(void *arg)
 			continue;
 		}
 
-		/* Read data - assume we can get it all in one hit */
-		len = read(ns, rbuf, SYSCTL_BUF_LEN);
+		/* XXX I hate gotos */
+readmore:
+		/* Read data */
+		len = read(ns, rbuf + rlen, SYSCTL_BUF_LEN - rlen);
+		if (len <= 0) {
+			fprintf(stderr, "%s: fd %d: read returned %d, errno=%d\n",
+			    __func__,
+			    ns,
+			    len,
+			    errno);
+			goto next;
+		}
+
+		rlen += len;
 
 		/*
-		 * If the read is less than the request header, then we
-		 * just turf it for now.
+		 * Not enough data? Keep reading.
 		 */
-		if (len < sizeof(struct sysctl_req_hdr)) {
-			fprintf(stderr, "%s: fd %d: len=%d, too short\n", __func__, ns, len);
-			goto next;
+		if (rlen < sizeof(struct sysctl_req_hdr)) {
+			fprintf(stderr, "%s: fd %d: read %d btyes, rlen is now %d\n",
+			    __func__,
+			    ns,
+			    len,
+			    rlen);
+			goto readmore;
 		}
 
 		hdr = (struct sysctl_req_hdr *) rbuf;
 
 		/*
-		 * Validate length fields and payload
-		 *
-		 * XXX TODO type, flags, strlen, srclen
+		 * Do we have enough data to cover the payload length?
 		 */
-		if (le32toh(hdr->sysctl_req_len) != len) {
-			fprintf(stderr, "%s: fd %d: req_len (%d) != len (%d)\n",
-			    __func__,
-			    ns,
-			    le32toh(hdr->sysctl_req_len),
-			    len);
+		if (le32toh(hdr->sysctl_req_len) < rlen) {
+			goto readmore;
 		}
+
+		/*
+		 * Ok, validate the various lengths.
+		 */
+
 		if (le32toh(hdr->sysctl_req_len) !=
 		    le32toh(hdr->sysctl_str_len)
 		    + le32toh(hdr->sysctl_src_len)
-		    + le32toh(hdr->sysctl_dst_len)
 		    + sizeof(struct sysctl_req_hdr)) {
 			fprintf(stderr, "%s: fd %d: length mismatch\n",
 			    __func__,
 			    ns);
+			fprintf(stderr, "%s: fd %d: hdr_len=%d, req_len=%d, str_len=%d, src_len=%d\n",
+			    __func__,
+			    ns,
+			    (int) sizeof(struct sysctl_req_hdr),
+			    le32toh(hdr->sysctl_req_len),
+			    le32toh(hdr->sysctl_str_len),
+			    le32toh(hdr->sysctl_src_len));
 			goto next;
 		}
 
