@@ -1,8 +1,8 @@
-
-
 TOPDIR?=${CURDIR}/../..
 
 PROG=passive
+
+SRCS=passive.c sysctl_api.c
 
 UINET_LIBS=uinet
 
