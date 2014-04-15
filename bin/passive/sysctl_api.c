@@ -36,20 +36,23 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/errno.h>
+#include <sys/endian.h>
 
 #include "uinet_api.h"
+#include "uinet_config.h"
 #include "sysctl_api.h"
-
 
 #define	SYSCTL_BUF_LEN		131072
 #define	SYSCTL_MAX_BUF_LEN	1048576
+#define	SYSCTL_MAX_STR_LEN	1024
+#define	SYSCTL_MAX_REQ_BUF_LEN	1048576
 
 void *
 passive_sysctl_listener(void *arg)
 {
 	int s, ns, r;
 	struct sockaddr_un sun;
-	char *rbuf, *wbuf;
+	char *rbuf, *wbuf = NULL;
 
 	rbuf = malloc(SYSCTL_BUF_LEN);
 	if (rbuf == NULL) {
@@ -88,6 +91,16 @@ passive_sysctl_listener(void *arg)
 		struct sockaddr_un sun_n;
 		socklen_t sl;
 		int len;
+		struct sysctl_req_hdr *hdr;
+		char *sbuf = NULL;
+		char *req_str = NULL;
+		size_t wbuf_len = 0;
+		size_t sbuf_len = 0;
+		size_t rval;
+		int error;
+		struct sysctl_resp_hdr rhdr;
+
+		bzero(&rhdr, sizeof(rhdr));
 
 		ns = accept(s, (struct sockaddr *) &sun_n, &sl);
 		if (ns < 0) {
@@ -107,19 +120,115 @@ passive_sysctl_listener(void *arg)
 			goto next;
 		}
 
+		hdr = (struct sysctl_req_hdr *) rbuf;
+
 		/*
 		 * Validate length fields and payload
+		 *
+		 * XXX TODO type, flags, strlen, srclen
 		 */
+		if (le32toh(hdr->sysctl_req_len) != len) {
+			fprintf(stderr, "%s: fd %d: req_len (%d) != len (%d)\n",
+			    __func__,
+			    ns,
+			    le32toh(hdr->sysctl_req_len),
+			    len);
+		}
+		if (le32toh(hdr->sysctl_req_len) !=
+		    le32toh(hdr->sysctl_str_len)
+		    + le32toh(hdr->sysctl_src_len)
+		    + le32toh(hdr->sysctl_dst_len)
+		    + sizeof(struct sysctl_req_hdr)) {
+			fprintf(stderr, "%s: fd %d: length mismatch\n",
+			    __func__,
+			    ns);
+			goto next;
+		}
+
+		if (le32toh(hdr->sysctl_dst_len) > SYSCTL_MAX_BUF_LEN) {
+			fprintf(stderr, "%s: fd %d: dst_len %d > %d\n",
+			    __func__,
+			    ns,
+			    le32toh(hdr->sysctl_dst_len),
+			    SYSCTL_MAX_BUF_LEN);
+			goto next;
+		}
 
 		/*
-		 * Allocate response buffer
+		 * Populate the request string.
 		 */
+		req_str = malloc(le32toh(hdr->sysctl_str_len) + 1);
+		if (req_str == NULL) {
+			fprintf(stderr, "%s; fd %d: malloc failed (req_str)\n",
+			    __func__,
+			    ns);
+			goto next;
+		}
+		memcpy(req_str, rbuf + sizeof(struct sysctl_req_hdr),
+		    le32toh(hdr->sysctl_str_len));
+		req_str[le32toh(hdr->sysctl_str_len)] = '\0';
+
+		/*
+		 * If there's a request buffer, populate that.
+		 */
+		if (le32toh(hdr->sysctl_src_len) > 0) {
+			sbuf = rbuf + le32toh(hdr->sysctl_src_len);
+			sbuf_len = le32toh(hdr->sysctl_src_len);
+		}
+
+		/*
+		 * Allocate response buffer if requested.
+		 */
+		if (le32toh(hdr->sysctl_dst_len) > 0) {
+			wbuf = malloc(le32toh(hdr->sysctl_dst_len));
+			if (wbuf == NULL) {
+				fprintf(stderr, "%s: fd %d: malloc failed: %d\n",
+				    __func__,
+				    ns,
+				    errno);
+				goto next;
+			}
+			wbuf_len = le32toh(hdr->sysctl_dst_len);
+		}
 
 		/* Issue sysctl */
+		fprintf(stderr,
+		    "%s: fd %d: sysctl '%s' src_len=%d, dst_len=%d\n",
+		    __func__,
+		    ns,
+		    req_str,
+		    le32toh(hdr->sysctl_src_len),
+		    le32toh(hdr->sysctl_dst_len));
 
-		/* Write data */
+		error = uinet_sysctl(req_str,
+		    wbuf, &wbuf_len,
+		    sbuf, sbuf_len,
+		    &rval,
+		    0);
+
+		fprintf(stderr, "%s: fd %d: sysctl error=%d, wbuf_len=%d, rval=%d\n",
+		    __func__,
+		    ns,
+		    (int) error,
+		    (int) wbuf_len,
+		    (int) rval);
+
+#if 0
+		/*
+		 * XXX validate the response back from uinet_sysctl()
+		 * is within bounds!
+		 */
+
+		/* Construct our response */
+		rhdr.sysctl_resp_len = htole32(sizeof(struct sysctl_resp_hdr) + wbuf_len);
+#endif
 
 next:
+		if (wbuf != NULL)
+			free(wbuf);
+		if (req_str != NULL)
+			free(req_str);
+
 		/* Close */
 		close(ns);
 	}
