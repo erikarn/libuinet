@@ -439,7 +439,7 @@ uinet_soaccept(struct uinet_socket *listener, struct uinet_sockaddr **nam, struc
 	struct socket *head = (struct socket *)listener;
 	struct socket *so;
 	struct sockaddr *sa = NULL;
-	int error;
+	int error = 0;
 
 	if (nam)
 		*nam = NULL;
