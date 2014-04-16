@@ -29,8 +29,13 @@ main(int argc, char *argv[])
 	size_t readbuf_len;
 	size_t read_ofs = 0;
 
+	if (argc < 2) {
+		printf("Usage: sysctl <sysctl string>\n");
+		exit(127);
+	}
+
 	/* Fake up a request structure for now */
-	req_str = strdup("net.inet.tcp.stats");
+	req_str = strdup(argv[1]);
 	reqbuf_len = 0;
 	respbuf_len = 1048576;
 	req_buf = NULL;
