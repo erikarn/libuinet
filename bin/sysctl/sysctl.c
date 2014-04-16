@@ -15,6 +15,78 @@
 #include "sysctl_api.h"
 #include "nv.h"
 
+static int
+uinet_sysctlbyname(int ns,
+    const char *name,
+    void *oldp,
+    size_t *oldlenp,
+    const void *newp,
+    size_t newlen)
+{
+	nvlist_t *nvl, *nvl_resp;
+	int retval = 0;
+	const char *rbuf;
+	size_t r_len;
+	int r_errno;
+
+	/* Create nvlist to populate the request into */
+	nvl = nvlist_create(0);
+	if (nvl == NULL) {
+		warn("nvlist_create");
+		retval = -1;
+		goto done;
+	}
+
+	/* Create nvlist for a sysctl_str request */
+	nvlist_add_string(nvl, "type", "sysctl_str");
+	nvlist_add_string(nvl, "sysctl_str", name);
+	nvlist_add_number(nvl, "sysctl_respbuf_len", *oldlenp);
+	if (newlen > 0) {
+		nvlist_add_binary(nvl, "sysctl_reqbuf", newp, newlen);
+	}
+
+	/* Send command */
+	if (nvlist_send(ns, nvl) < 0) {
+		warn("nvlist_send");
+		retval = -1;
+		goto done;
+	}
+
+	/* Read response */
+	nvl_resp = nvlist_recv(ns);
+	if (nvl_resp == NULL) {
+		warn("nvlist_recv");
+		retval = -1;
+		goto done;
+	}
+
+	if (! nvlist_exists_number(nvl_resp, "sysctl_errno")) {
+		fprintf(stderr, "response: no errno?\n");
+		goto done;
+	}
+	r_errno = (int) nvlist_get_number(nvl_resp, "sysctl_errno");
+
+	/* XXX validate r_len versus oldlenp */
+	if (nvlist_exists_binary(nvl_resp, "sysctl_respbuf")) {
+		rbuf = nvlist_get_binary(nvl_resp, "sysctl_respbuf", &r_len);
+		memcpy(oldp, rbuf, r_len);
+		*oldlenp = r_len;
+	} else {
+		r_len = 0;
+	}
+
+	retval = 0;
+	/* XXX */
+	errno = r_errno;
+
+done:
+	if (nvl)
+		nvlist_destroy(nvl);
+	if (nvl_resp)
+		nvlist_destroy(nvl_resp);
+	return (retval);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -22,13 +94,11 @@ main(int argc, char *argv[])
 	int s;
 	struct sockaddr_un sun;
 	int r;
-	nvlist_t *nvl, *nvl_resp;
 	size_t reqbuf_len = 0, respbuf_len = 0;
 	char *req_str;
 	char *req_buf = NULL;
-	const char *resp_buf;
+	char *resp_buf;
 	size_t r_len;
-	int r_errno;
 
 	if (argc < 2) {
 		printf("Usage: sysctl <sysctl string>\n");
@@ -41,7 +111,6 @@ main(int argc, char *argv[])
 	respbuf_len = 1048576;
 
 	/* XXX Reqbuf when required */
-
 
 	/* Connect to the destination socket */
 	bzero(&sun, sizeof(sun));
@@ -60,53 +129,25 @@ main(int argc, char *argv[])
 		err(1, "connect");
 	}
 
-	/* Create nvlist to populate the request into */
-	nvl = nvlist_create(0);
-	if (nvl == NULL)
-		err(1, "nvlist_create");
+	resp_buf = calloc(1, respbuf_len);
+	if (resp_buf == NULL)
+		err(1, "calloc");
 
-	/* Create nvlist for a sysctl_str request */
-	nvlist_add_string(nvl, "type", "sysctl_str");
-	nvlist_add_string(nvl, "sysctl_str", req_str);
-	nvlist_add_number(nvl, "sysctl_respbuf_len", respbuf_len);
-	if (reqbuf_len > 0) {
-		nvlist_add_binary(nvl, "sysctl_reqbuf", req_buf, reqbuf_len);
-	}
-
-	/* Send command */
-	if (nvlist_send(s, nvl) < 0) {
-		err(1, "nvlist_send");
-	}
-
-	/* Read response */
-	nvl_resp = nvlist_recv(s);
-	if (nvl_resp == NULL) {
-		err(1, "nvlist_recv");
-	}
-
-	if (! nvlist_exists_number(nvl_resp, "sysctl_errno")) {
-		fprintf(stderr, "response: no errno?\n");
-		goto done;
-	}
-	r_errno = (int) nvlist_get_number(nvl_resp, "sysctl_errno");
-
-	if (nvlist_exists_binary(nvl_resp, "sysctl_respbuf")) {
-		resp_buf = nvlist_get_binary(nvl_resp, "sysctl_respbuf", &r_len);
-	} else {
-		r_len = 0;
-	}
-
-	printf("%s: str=%s, errno=%d, len=%d\n",
+	/* Do a sysctl */
+	r = uinet_sysctlbyname(s, req_str, resp_buf, &respbuf_len,
+	    NULL, 0);
+	printf("%s: str=%s, r=%d, errno=%d, len=%d\n",
 	    __func__,
 	    req_str,
-	    (int) r_errno,
-	    (int) r_len);
+	    r,
+	    errno,
+	    (int) respbuf_len);
 
+	/* Done */
+	if (req_str)
+		free(req_str);
 
 done:
-	/* Done with request/response */
-	nvlist_destroy(nvl);
-	nvlist_destroy(nvl_resp);
 
 	/* Done with socket */
 	close(s);
