@@ -236,15 +236,29 @@ readmore:
 		    (int) wbuf_len,
 		    (int) rval);
 
-#if 0
 		/*
-		 * XXX validate the response back from uinet_sysctl()
-		 * is within bounds!
+		 * XXX Validate the response back from uinet_sysctl()
+		 * is within bounds for the response back to the
+		 * client.
 		 */
 
 		/* Construct our response */
 		rhdr.sysctl_resp_len = htole32(sizeof(struct sysctl_resp_hdr) + wbuf_len);
-#endif
+		rhdr.sysctl_resp_type = 0; /* XXX */
+		rhdr.sysctl_resp_flags = 0; /* XXX */
+
+		if (errno == 0)
+			rhdr.sysctl_dst_len = htole32(rval);
+		else
+			rhdr.sysctl_dst_len = 0;
+		rhdr.sysctl_dst_errno = error;
+
+		write(ns, &rhdr, sizeof(rhdr));
+		if (wbuf_len > 0) {
+			write(ns, wbuf, wbuf_len);
+		}
+
+		/* Done! */
 
 next:
 		if (wbuf != NULL)
