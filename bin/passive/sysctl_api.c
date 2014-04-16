@@ -255,6 +255,13 @@ passive_sysctl_listener(void *arg)
 
 		/* XXX I hate gotos */
 readmore:
+
+		/* Do we have space left in our incoming buffer? */
+		if (rlen >= SYSCTL_BUF_LEN) {
+			fprintf(stderr, "%s: fd %d: read too much?\n", __func__, ns);
+			goto next;
+		}
+
 		/* Read data */
 		len = read(ns, rbuf + rlen, SYSCTL_BUF_LEN - rlen);
 		if (len <= 0) {
@@ -266,13 +273,15 @@ readmore:
 			goto next;
 		}
 
+		/* Keep track of how much data is in the incoming buffer */
 		rlen += len;
 
 		/*
 		 * Not enough data? Keep reading.
 		 */
 		if (rlen < sizeof(struct sysctl_req_hdr)) {
-			fprintf(stderr, "%s: fd %d: read %d btyes, rlen is now %d\n",
+			fprintf(stderr,
+			    "%s: fd %d: read %d btyes, rlen is now %d\n",
 			    __func__,
 			    ns,
 			    len,
@@ -281,6 +290,24 @@ readmore:
 		}
 
 		hdr = (struct sysctl_req_hdr *) rbuf;
+
+		/*
+		 * Validate sysctl_req_len so we don't try to read way more
+		 * than we have buffer space for.
+		 *
+		 * We assume that we're only getting to this point
+		 * when the header is at the beginning of the buffer;
+		 * not that we're doing pipelined requests.
+		 */
+		if (le32toh(hdr->sysctl_req_len) >= SYSCTL_BUF_LEN) {
+			fprintf(stderr,
+			    "%s: fd %d: req_len (%d) is too big (%d)\n",
+			    __func__,
+			    ns,
+			    le32toh(hdr->sysctl_req_len),
+			    SYSCTL_BUF_LEN);
+			goto next;
+		}
 
 		/*
 		 * Do we have enough data to cover the payload length?
