@@ -68,3 +68,4 @@ uinet_synfilter_getconninfo
 uinet_synfilter_getl2info
 uinet_synfilter_install
 uinet_sysctl
+uinet_sysctlbyname

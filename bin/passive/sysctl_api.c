@@ -119,7 +119,7 @@ passive_sysctl_reqtype_str(int ns, nvlist_t *nvl)
 	    (int) wbuf_len);
 
 	/* XXX typecasting sbuf sucks */
-	error = uinet_sysctl(req_str,
+	error = uinet_sysctlbyname(req_str,
 	    wbuf, &wbuf_len,
 	    (char *) sbuf, sbuf_len,
 	    &rval,
