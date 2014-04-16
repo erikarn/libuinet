@@ -2,7 +2,7 @@ TOPDIR?=${CURDIR}/../..
 
 PROG=sysctl
 
-SRCS=sysctl.c
+SRCS=sysctl.c u_sysctl.c
 
 UINET_LIBS=uinet
 
