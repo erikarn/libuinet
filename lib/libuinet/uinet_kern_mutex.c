@@ -33,6 +33,7 @@
 #include <sys/mutex.h>
 #include <sys/proc.h>
 #include <sys/systm.h>
+#include <sys/sx.h>
 
 #include "uinet_host_interface.h"
 
@@ -104,8 +105,9 @@ void
 mutex_init(void)
 {
 	mtx_init(&Giant, "Giant", NULL, MTX_DEF | MTX_RECURSE);
-
 	mtx_init(&proc0.p_mtx, "process lock", NULL, MTX_DEF | MTX_DUPOK);
+	/* XXX? */
+	sx_init(&allproc_lock, "allproc_lock");
 }
 
 void
