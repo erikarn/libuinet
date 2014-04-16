@@ -7,6 +7,7 @@ typedef enum {
 	SYSCTL_REQ_OID = 2,
 } sysctl_req_type_t;
 
+#if 0
 struct sysctl_req_hdr {
 	uint32_t	sysctl_req_len;		/* length of the whole payload */
 	uint32_t	sysctl_req_type;	/* Type of the message */
@@ -33,6 +34,7 @@ struct sysctl_resp_hdr {
 
 	/* Response follows, if sysctl_dst_len != 0 */
 };
+#endif
 
 extern	void * passive_sysctl_listener(void *arg);
 

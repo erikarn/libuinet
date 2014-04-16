@@ -40,6 +40,7 @@
 
 #include "uinet_api.h"
 #include "uinet_config.h"
+#include "nv.h"
 #include "sysctl_api.h"
 
 #define	SYSCTL_BUF_LEN		131072
@@ -54,164 +55,140 @@
  * not.
  */
 static int
-passive_sysctl_reqtype_str(int ns, char *buf, int len)
+passive_sysctl_reqtype_str(int ns, nvlist_t *nvl)
 {
 	struct sysctl_req_hdr *hdr;
+	nvlist_t *nvl_resp = NULL;
 	int retval = 0;
-	char *sbuf = NULL;
-	char *req_str = NULL;
+	char *wbuf = NULL;
 	size_t wbuf_len = 0;
 	size_t sbuf_len = 0;
-	size_t rval;
+	char *req_str = NULL;
+	const char *sbuf;
 	int error;
-	struct sysctl_resp_hdr rhdr;
-	char *wbuf = NULL;
+	size_t rval;
 
-	/* Request header; zero response header */
-	hdr = (struct sysctl_req_hdr *) buf;
-	bzero(&rhdr, sizeof(rhdr));
-
-	/*
-	 * Validate the various lengths.
-	 */
-
-	if (le32toh(hdr->sysctl_req_len) !=
-	    le32toh(hdr->sysctl_str_len)
-	    + le32toh(hdr->sysctl_src_len)
-	    + sizeof(struct sysctl_req_hdr)) {
-		fprintf(stderr, "%s: fd %d: length mismatch\n",
-		    __func__,
-		    ns);
-		fprintf(stderr, "%s: fd %d: hdr_len=%d, req_len=%d, str_len=%d, src_len=%d\n",
-		    __func__,
-		    ns,
-		    (int) sizeof(struct sysctl_req_hdr),
-		    le32toh(hdr->sysctl_req_len),
-		    le32toh(hdr->sysctl_str_len),
-		    le32toh(hdr->sysctl_src_len));
-		retval = 0;
-		goto finish;
-	}
-
-	if (le32toh(hdr->sysctl_dst_len) > SYSCTL_MAX_BUF_LEN) {
-		fprintf(stderr, "%s: fd %d: dst_len %d > %d\n",
-		    __func__,
-		    ns,
-		    le32toh(hdr->sysctl_dst_len),
-		    SYSCTL_MAX_BUF_LEN);
-		retval = 0;
-		goto finish;
-	}
-
-	/*
-	 * Populate the request string.
-	 */
-	req_str = malloc(le32toh(hdr->sysctl_str_len) + 1);
-	if (req_str == NULL) {
-		fprintf(stderr, "%s; fd %d: malloc failed (req_str)\n",
+	/* Validate fields are here */
+	if (! nvlist_exists_string(nvl, "sysctl_str")) {
+		fprintf(stderr, "%s: fd %d: missing sysctl_str\n",
 		    __func__,
 		    ns);
 		retval = 0;
 		goto finish;
 	}
+	req_str = strdup(nvlist_get_string(nvl, "sysctl_str"));
 
-	memcpy(req_str, buf + sizeof(struct sysctl_req_hdr),
-	    le32toh(hdr->sysctl_str_len));
-	req_str[le32toh(hdr->sysctl_str_len)] = '\0';
-
-	/*
-	 * If there's a request buffer, populate that.
-	 */
-	if (le32toh(hdr->sysctl_src_len) > 0) {
-		sbuf = buf + le32toh(hdr->sysctl_src_len);
-		sbuf_len = le32toh(hdr->sysctl_src_len);
+	/* sysctl_respbuf_len */
+	if (! nvlist_exists_number(nvl, "sysctl_respbuf_len")) {
+		fprintf(stderr, "%s: fd %d: missing sysctl_respbuf_len\n",
+		    __func__,
+		    ns);
+		retval = 0;
+		goto finish;
+	}
+	if (nvlist_get_number(nvl, "sysctl_respbuf_len") > SYSCTL_MAX_REQ_BUF_LEN) {
+		fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is too big!\n",
+		    __func__,
+		    ns);
+		retval = 0;
+		goto finish;
+	}
+	wbuf_len = nvlist_get_number(nvl, "sysctl_respbuf_len");
+	wbuf = calloc(1, wbuf_len);
+	if (wbuf == NULL) {
+		fprintf(stderr, "%s: fd %d: malloc failed\n", __func__, ns);
+		retval = 0;
+		goto finish;
 	}
 
-	/*
-	 * Allocate response buffer if requested.
-	 */
-	if (le32toh(hdr->sysctl_dst_len) > 0) {
-		wbuf = malloc(le32toh(hdr->sysctl_dst_len));
-		if (wbuf == NULL) {
-			fprintf(stderr, "%s: fd %d: malloc failed: %d\n",
-			    __func__,
-			    ns,
-			    errno);
-			retval = 0;
-			goto finish;
-		}
-		wbuf_len = le32toh(hdr->sysctl_dst_len);
+	/* sysctl_reqbuf */
+	if (nvlist_exists_binary(nvl, "sysctl_reqbuf")) {
+		sbuf = nvlist_get_binary(nvl, "sysctl_reqbuf", &sbuf_len);
+	} else {
+		sbuf = NULL;
+		sbuf_len = 0;
 	}
 
-		/* Issue sysctl */
-		fprintf(stderr,
-		    "%s: fd %d: sysctl '%s' src_len=%d, dst_len=%d\n",
+	/* Issue sysctl */
+	fprintf(stderr,
+	    "%s: fd %d: sysctl '%s' src_len=%d, dst_len=%d\n",
+	    __func__,
+	    ns,
+	    req_str,
+	    (int) sbuf_len,
+	    (int) wbuf_len);
+
+	/* XXX typecasting sbuf sucks */
+	error = uinet_sysctl(req_str,
+	    wbuf, &wbuf_len,
+	    (char *) sbuf, sbuf_len,
+	    &rval,
+	    0);
+
+	fprintf(stderr, "%s: fd %d: sysctl error=%d, wbuf_len=%llu, rval=%llu\n",
+	    __func__,
+	    ns,
+	    (int) error,
+	    (unsigned long long) wbuf_len,
+	    (unsigned long long) rval);
+
+	/*
+	 * XXX Validate the response back from uinet_sysctl()
+	 * is within bounds for the response back to the
+	 * client.
+	 */
+	if (error == 0 && rval >= wbuf_len) {
+		fprintf(stderr, "%s: fd %d: rval (%llu) > wbuf_len (%llu)\n",
 		    __func__,
 		    ns,
-		    req_str,
-		    le32toh(hdr->sysctl_src_len),
-		    le32toh(hdr->sysctl_dst_len));
+		    (unsigned long long) rval,
+		    (unsigned long long) wbuf_len);
+		retval = 0;
+		goto finish;
+	}
 
-		error = uinet_sysctl(req_str,
-		    wbuf, &wbuf_len,
-		    sbuf, sbuf_len,
-		    &rval,
-		    0);
+	/* Construct our response */
+	nvl_resp = nvlist_create(0);
+	if (nvl_resp == NULL) {
+		fprintf(stderr, "%s: fd %d: nvlist_create failed\n", __func__, ns);
+		retval = 0;
+		goto finish;
+	}
 
-		fprintf(stderr, "%s: fd %d: sysctl error=%d, wbuf_len=%d, rval=%d\n",
+	nvlist_add_number(nvl_resp, "sysctl_errno", error);
+	if (error == 0) {
+		nvlist_add_binary(nvl_resp, "sysctl_respbuf", wbuf, rval);
+	}
+
+	if (nvlist_send(ns, nvl_resp) < 0) {
+		fprintf(stderr, "%s: fd %d: nvlist_send failed; errno=%d\n",
 		    __func__,
 		    ns,
-		    (int) error,
-		    (int) wbuf_len,
-		    (int) rval);
-
-		/*
-		 * XXX Validate the response back from uinet_sysctl()
-		 * is within bounds for the response back to the
-		 * client.
-		 */
-
-		/* Construct our response */
-		rhdr.sysctl_resp_len = htole32(sizeof(struct sysctl_resp_hdr) + wbuf_len);
-		rhdr.sysctl_resp_type = 0; /* XXX */
-		rhdr.sysctl_resp_flags = 0; /* XXX */
-
-		if (errno == 0)
-			rhdr.sysctl_dst_len = htole32(rval);
-		else
-			rhdr.sysctl_dst_len = 0;
-		rhdr.sysctl_dst_errno = error;
-
-		write(ns, &rhdr, sizeof(rhdr));
-		if (wbuf_len > 0) {
-			write(ns, wbuf, wbuf_len);
-		}
-
-		/* Done! */
+		    errno);
 		retval = 1;
+		goto finish;
+	}
+
+	/* Done! */
+	retval = 1;
 
 finish:
 	if (req_str != NULL)
 		free(req_str);
 	if (wbuf != NULL)
 		free(wbuf);
+	if (nvl_resp != NULL)
+		nvlist_destroy(nvl_resp);
 	return (retval);
 }
 
 void *
 passive_sysctl_listener(void *arg)
 {
-	int s, ns, r;
+	int s, r;
 	struct sockaddr_un sun;
-	char *rbuf;
 
 	uinet_initialize_thread();
-
-	rbuf = malloc(SYSCTL_BUF_LEN);
-	if (rbuf == NULL) {
-		printf("%s: malloc failed: %d\n", __func__, errno);
-		return (NULL);
-	}
 
 	bzero(&sun, sizeof(sun));
 	strcpy(sun.sun_path, "/tmp/sysctl.sock");
@@ -243,9 +220,10 @@ passive_sysctl_listener(void *arg)
 	for (;;) {
 		struct sockaddr_un sun_n;
 		socklen_t sl;
-		int len;
-		struct sysctl_req_hdr *hdr;
-		int rlen = 0;
+		nvlist_t *nvl;
+		int ns;
+		int ret;
+		const char *type;
 
 		ns = accept(s, (struct sockaddr *) &sun_n, &sl);
 		if (ns < 0) {
@@ -253,83 +231,46 @@ passive_sysctl_listener(void *arg)
 			continue;
 		}
 
-		/* XXX I hate gotos */
-readmore:
+		for (;;) {
+			nvl = nvlist_recv(ns);
+			if (nvl == NULL)
+				break;
 
-		/* Do we have space left in our incoming buffer? */
-		if (rlen >= SYSCTL_BUF_LEN) {
-			fprintf(stderr, "%s: fd %d: read too much?\n", __func__, ns);
-			goto next;
-		}
+			if (! nvlist_exists_string(nvl, "type")) {
+				fprintf(stderr, "%s: fd %d: no type; bailing\n",
+				    __func__,
+				    ns);
+				break;
+			}
+			type = nvlist_get_string(nvl, "type");
 
-		/* Read data */
-		len = read(ns, rbuf + rlen, SYSCTL_BUF_LEN - rlen);
-		if (len <= 0) {
-			fprintf(stderr, "%s: fd %d: read returned %d, errno=%d\n",
+			fprintf(stderr, "%s: fd %d: type=%s\n",
 			    __func__,
 			    ns,
-			    len,
-			    errno);
-			goto next;
+			    type);
+
+			/* Dispatch as appropriate */
+			if (strncmp(type, "sysctl_str", 10) == 0) {
+				ret = passive_sysctl_reqtype_str(ns, nvl);
+			} else if (strncmp(type, "sysctl_oid", 10) == 0) {
+				ret = passive_sysctl_reqtype_str(ns, nvl);
+			} else {
+				fprintf(stderr, "%s: fd %d: unknown type=%s\n",
+				    __func__,
+				    ns,
+				    nvlist_get_string(nvl, "type"));
+				break;
+			}
+
+			/* Tidyup */
+			nvlist_destroy(nvl);
+
+			/* Ret == 0? Then we don't wait around */
+			if (ret == 0)
+				break;
 		}
 
-		/* Keep track of how much data is in the incoming buffer */
-		rlen += len;
-
-		/*
-		 * Not enough data? Keep reading.
-		 */
-		if (rlen < sizeof(struct sysctl_req_hdr)) {
-			fprintf(stderr,
-			    "%s: fd %d: read %d btyes, rlen is now %d\n",
-			    __func__,
-			    ns,
-			    len,
-			    rlen);
-			goto readmore;
-		}
-
-		hdr = (struct sysctl_req_hdr *) rbuf;
-
-		/*
-		 * Validate sysctl_req_len so we don't try to read way more
-		 * than we have buffer space for.
-		 *
-		 * We assume that we're only getting to this point
-		 * when the header is at the beginning of the buffer;
-		 * not that we're doing pipelined requests.
-		 */
-		if (le32toh(hdr->sysctl_req_len) >= SYSCTL_BUF_LEN) {
-			fprintf(stderr,
-			    "%s: fd %d: req_len (%d) is too big (%d)\n",
-			    __func__,
-			    ns,
-			    le32toh(hdr->sysctl_req_len),
-			    SYSCTL_BUF_LEN);
-			goto next;
-		}
-
-		/*
-		 * Do we have enough data to cover the payload length?
-		 */
-		if (le32toh(hdr->sysctl_req_len) < rlen) {
-			goto readmore;
-		}
-
-		/*
-		 * We have the entire payload.  Let's dispatch based
-		 * on type.
-		 */
-		(void) passive_sysctl_reqtype_str(ns, rbuf, rlen);
-
-		/* XXX until we've taught the loop about
-		 * how to consume readbuf data right and
-		 * have the remainder data be moved to the
-		 * head of the queue, let's just close it for
-		 * now.
-		 */
-next:
-		/* Close */
+		/* Done; bail */
 		close(ns);
 	}
 
