@@ -182,6 +182,151 @@ finish:
 	return (retval);
 }
 
+/*
+ * Handle sysctl oid type requests.
+ *
+ * Returns 1 if the connection should stay open; 0 if
+ * not.
+ *
+ * XXX this is definitely not endian-clean.
+ * I'm just passing in sysctl_oid as a binary array. Ew.
+ */
+static int
+passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
+{
+	struct sysctl_req_hdr *hdr;
+	nvlist_t *nvl_resp = NULL;
+	int retval = 0;
+	char *wbuf = NULL;
+	size_t wbuf_len = 0;
+	size_t sbuf_len = 0;
+	const int *req_oid = NULL;
+	const char *sbuf;
+	int error;
+	size_t rval;
+	size_t req_oid_len;
+
+	/* Validate fields are here */
+	if (! nvlist_exists_binary(nvl, "sysctl_oid")) {
+		fprintf(stderr, "%s: fd %d: missing sysctl_oid\n",
+		    __func__,
+		    ns);
+		retval = 0;
+		goto finish;
+	}
+	req_oid = (const int *) nvlist_get_binary(nvl, "sysctl_oid",
+	    &req_oid_len);
+	if (req_oid_len % sizeof(int) != 0) {
+		fprintf(stderr, "%s: fd %d: req_oid_len (%llu) is not a multiple of %d\n",
+		    __func__,
+		    ns,
+		    (unsigned long long) req_oid_len,
+		    (int) sizeof(int));
+		retval = 0;
+		goto finish;
+	}
+
+	/* sysctl_respbuf_len */
+	if (! nvlist_exists_number(nvl, "sysctl_respbuf_len")) {
+		fprintf(stderr, "%s: fd %d: missing sysctl_respbuf_len\n",
+		    __func__,
+		    ns);
+		retval = 0;
+		goto finish;
+	}
+	if (nvlist_get_number(nvl, "sysctl_respbuf_len") > SYSCTL_MAX_REQ_BUF_LEN) {
+		fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is too big!\n",
+		    __func__,
+		    ns);
+		retval = 0;
+		goto finish;
+	}
+	wbuf_len = nvlist_get_number(nvl, "sysctl_respbuf_len");
+	wbuf = calloc(1, wbuf_len);
+	if (wbuf == NULL) {
+		fprintf(stderr, "%s: fd %d: malloc failed\n", __func__, ns);
+		retval = 0;
+		goto finish;
+	}
+
+	/* sysctl_reqbuf */
+	if (nvlist_exists_binary(nvl, "sysctl_reqbuf")) {
+		sbuf = nvlist_get_binary(nvl, "sysctl_reqbuf", &sbuf_len);
+	} else {
+		sbuf = NULL;
+		sbuf_len = 0;
+	}
+
+	/* Issue sysctl */
+	fprintf(stderr,
+	    "%s: fd %d: sysctl oid src_len=%d, dst_len=%d\n",
+	    __func__,
+	    ns,
+	    (int) sbuf_len,
+	    (int) wbuf_len);
+
+	/* XXX typecasting sbuf and req_oid sucks */
+	error = uinet_sysctl((int *) req_oid, req_oid_len / sizeof(int),
+	    wbuf, &wbuf_len,
+	    (char *) sbuf, sbuf_len,
+	    &rval,
+	    0);
+
+	fprintf(stderr, "%s: fd %d: sysctl error=%d, wbuf_len=%llu, rval=%llu\n",
+	    __func__,
+	    ns,
+	    (int) error,
+	    (unsigned long long) wbuf_len,
+	    (unsigned long long) rval);
+
+	/*
+	 * XXX Validate the response back from uinet_sysctl()
+	 * is within bounds for the response back to the
+	 * client.
+	 */
+	if (error == 0 && rval >= wbuf_len) {
+		fprintf(stderr, "%s: fd %d: rval (%llu) > wbuf_len (%llu)\n",
+		    __func__,
+		    ns,
+		    (unsigned long long) rval,
+		    (unsigned long long) wbuf_len);
+		retval = 0;
+		goto finish;
+	}
+
+	/* Construct our response */
+	nvl_resp = nvlist_create(0);
+	if (nvl_resp == NULL) {
+		fprintf(stderr, "%s: fd %d: nvlist_create failed\n", __func__, ns);
+		retval = 0;
+		goto finish;
+	}
+
+	nvlist_add_number(nvl_resp, "sysctl_errno", error);
+	if (error == 0) {
+		nvlist_add_binary(nvl_resp, "sysctl_respbuf", wbuf, rval);
+	}
+
+	if (nvlist_send(ns, nvl_resp) < 0) {
+		fprintf(stderr, "%s: fd %d: nvlist_send failed; errno=%d\n",
+		    __func__,
+		    ns,
+		    errno);
+		retval = 1;
+		goto finish;
+	}
+
+	/* Done! */
+	retval = 1;
+
+finish:
+	if (wbuf != NULL)
+		free(wbuf);
+	if (nvl_resp != NULL)
+		nvlist_destroy(nvl_resp);
+	return (retval);
+}
+
 void *
 passive_sysctl_listener(void *arg)
 {
@@ -253,7 +398,7 @@ passive_sysctl_listener(void *arg)
 			if (strncmp(type, "sysctl_str", 10) == 0) {
 				ret = passive_sysctl_reqtype_str(ns, nvl);
 			} else if (strncmp(type, "sysctl_oid", 10) == 0) {
-				ret = passive_sysctl_reqtype_str(ns, nvl);
+				ret = passive_sysctl_reqtype_oid(ns, nvl);
 			} else {
 				fprintf(stderr, "%s: fd %d: unknown type=%s\n",
 				    __func__,

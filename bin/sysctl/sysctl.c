@@ -87,6 +87,80 @@ done:
 	return (retval);
 }
 
+static int
+u_sysctl(int ns,
+    int *oid,
+    u_int namelen,
+    void *oldp,
+    size_t *oldlenp,
+    const void *newp,
+    size_t newlen)
+{
+	nvlist_t *nvl, *nvl_resp;
+	int retval = 0;
+	const char *rbuf;
+	size_t r_len;
+	int r_errno;
+
+	/* Create nvlist to populate the request into */
+	nvl = nvlist_create(0);
+	if (nvl == NULL) {
+		warn("nvlist_create");
+		retval = -1;
+		goto done;
+	}
+
+	/* Create nvlist for a sysctl_oid request */
+	nvlist_add_string(nvl, "type", "sysctl_oid");
+	nvlist_add_binary(nvl, "sysctl_oid", oid, namelen * sizeof(int));
+	nvlist_add_number(nvl, "sysctl_respbuf_len", *oldlenp);
+	if (newlen > 0) {
+		nvlist_add_binary(nvl, "sysctl_reqbuf", newp, newlen);
+	}
+
+	/* Send command */
+	if (nvlist_send(ns, nvl) < 0) {
+		warn("nvlist_send");
+		retval = -1;
+		goto done;
+	}
+
+	/* Read response */
+	nvl_resp = nvlist_recv(ns);
+	if (nvl_resp == NULL) {
+		warn("nvlist_recv");
+		retval = -1;
+		goto done;
+	}
+
+	if (! nvlist_exists_number(nvl_resp, "sysctl_errno")) {
+		fprintf(stderr, "response: no errno?\n");
+		goto done;
+	}
+	r_errno = (int) nvlist_get_number(nvl_resp, "sysctl_errno");
+
+	/* XXX validate r_len versus oldlenp */
+	if (nvlist_exists_binary(nvl_resp, "sysctl_respbuf")) {
+		rbuf = nvlist_get_binary(nvl_resp, "sysctl_respbuf", &r_len);
+		memcpy(oldp, rbuf, r_len);
+		*oldlenp = r_len;
+	} else {
+		r_len = 0;
+	}
+
+	retval = 0;
+	/* XXX */
+	errno = r_errno;
+
+done:
+	if (nvl)
+		nvlist_destroy(nvl);
+	if (nvl_resp)
+		nvlist_destroy(nvl_resp);
+	return (retval);
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -133,6 +207,7 @@ main(int argc, char *argv[])
 	if (resp_buf == NULL)
 		err(1, "calloc");
 
+#if 0
 	/* Do a sysctl */
 	r = u_sysctlbyname(s, req_str, resp_buf, &respbuf_len,
 	    NULL, 0);
@@ -142,6 +217,20 @@ main(int argc, char *argv[])
 	    r,
 	    errno,
 	    (int) respbuf_len);
+#else
+	/* Do a sysctl */
+	int oida[2];
+	oida[0] = 1;
+	oida[1] = 6;
+	r = u_sysctl(s, oida, 2, resp_buf, &respbuf_len,
+	    NULL, 0);
+	printf("%s: str=%s, r=%d, errno=%d, len=%d\n",
+	    __func__,
+	    req_str,
+	    r,
+	    errno,
+	    (int) respbuf_len);
+#endif
 
 	/* Done */
 	if (req_str)
