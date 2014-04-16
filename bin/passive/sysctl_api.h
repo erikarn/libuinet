@@ -1,6 +1,12 @@
 #ifndef	__SYSCTL_API_H__
 #define	__SYSCTL_API_H__
 
+typedef enum {
+	SYSCTL_REQ_NONE = 0,
+	SYSCTL_REQ_STR = 1,
+	SYSCTL_REQ_OID = 2,
+} sysctl_req_type_t;
+
 struct sysctl_req_hdr {
 	uint32_t	sysctl_req_len;		/* length of the whole payload */
 	uint32_t	sysctl_req_type;	/* Type of the message */

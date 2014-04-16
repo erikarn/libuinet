@@ -47,172 +47,101 @@
 #define	SYSCTL_MAX_STR_LEN	1024
 #define	SYSCTL_MAX_REQ_BUF_LEN	1048576
 
-void *
-passive_sysctl_listener(void *arg)
+/*
+ * Handle sysctl string type requests.
+ *
+ * Returns 1 if the connection should stay open; 0 if
+ * not.
+ */
+static int
+passive_sysctl_reqtype_str(int ns, char *buf, int len)
 {
-	int s, ns, r;
-	struct sockaddr_un sun;
-	char *rbuf, *wbuf = NULL;
+	struct sysctl_req_hdr *hdr;
+	int retval = 0;
+	char *sbuf = NULL;
+	char *req_str = NULL;
+	size_t wbuf_len = 0;
+	size_t sbuf_len = 0;
+	size_t rval;
+	int error;
+	struct sysctl_resp_hdr rhdr;
+	char *wbuf = NULL;
 
-	uinet_initialize_thread();
+	/* Request header; zero response header */
+	hdr = (struct sysctl_req_hdr *) buf;
+	bzero(&rhdr, sizeof(rhdr));
 
-	rbuf = malloc(SYSCTL_BUF_LEN);
-	if (rbuf == NULL) {
-		printf("%s: malloc failed: %d\n", __func__, errno);
-		return (NULL);
+	/*
+	 * Validate the various lengths.
+	 */
+
+	if (le32toh(hdr->sysctl_req_len) !=
+	    le32toh(hdr->sysctl_str_len)
+	    + le32toh(hdr->sysctl_src_len)
+	    + sizeof(struct sysctl_req_hdr)) {
+		fprintf(stderr, "%s: fd %d: length mismatch\n",
+		    __func__,
+		    ns);
+		fprintf(stderr, "%s: fd %d: hdr_len=%d, req_len=%d, str_len=%d, src_len=%d\n",
+		    __func__,
+		    ns,
+		    (int) sizeof(struct sysctl_req_hdr),
+		    le32toh(hdr->sysctl_req_len),
+		    le32toh(hdr->sysctl_str_len),
+		    le32toh(hdr->sysctl_src_len));
+		retval = 0;
+		goto finish;
 	}
 
-	bzero(&sun, sizeof(sun));
-	strcpy(sun.sun_path, "/tmp/sysctl.sock");
-	sun.sun_len = 0;
-	sun.sun_family = AF_UNIX;
-
-	printf("sysctl_listener: starting listener on %s\n", sun.sun_path);
-	s = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (s < 0) {
-		fprintf(stderr, "%s: socket failed: %d\n", __func__, errno);
-		return NULL;
-	}
-
-	r = bind(s, (struct sockaddr *) &sun, sizeof(sun));
-	if (r < 0) {
-		fprintf(stderr, "%s: bind failed: %d\n", __func__, errno);
-		return NULL;
-	}
-
-	r = listen(s, 10);
-	if (r < 0) {
-		fprintf(stderr, "%s: listen failed: %d\n", __func__, errno);
-		return NULL;
+	if (le32toh(hdr->sysctl_dst_len) > SYSCTL_MAX_BUF_LEN) {
+		fprintf(stderr, "%s: fd %d: dst_len %d > %d\n",
+		    __func__,
+		    ns,
+		    le32toh(hdr->sysctl_dst_len),
+		    SYSCTL_MAX_BUF_LEN);
+		retval = 0;
+		goto finish;
 	}
 
 	/*
-	 * Yes, I could make this threaded or non-blocking..
+	 * Populate the request string.
 	 */
-	for (;;) {
-		struct sockaddr_un sun_n;
-		socklen_t sl;
-		int len;
-		struct sysctl_req_hdr *hdr;
-		char *sbuf = NULL;
-		char *req_str = NULL;
-		size_t wbuf_len = 0;
-		size_t sbuf_len = 0;
-		size_t rval;
-		int error;
-		struct sysctl_resp_hdr rhdr;
-		int rlen = 0;
+	req_str = malloc(le32toh(hdr->sysctl_str_len) + 1);
+	if (req_str == NULL) {
+		fprintf(stderr, "%s; fd %d: malloc failed (req_str)\n",
+		    __func__,
+		    ns);
+		retval = 0;
+		goto finish;
+	}
 
-		bzero(&rhdr, sizeof(rhdr));
+	memcpy(req_str, buf + sizeof(struct sysctl_req_hdr),
+	    le32toh(hdr->sysctl_str_len));
+	req_str[le32toh(hdr->sysctl_str_len)] = '\0';
 
-		ns = accept(s, (struct sockaddr *) &sun_n, &sl);
-		if (ns < 0) {
-			fprintf(stderr, "%s: accept failed: %d\n", __func__, errno);
-			continue;
-		}
+	/*
+	 * If there's a request buffer, populate that.
+	 */
+	if (le32toh(hdr->sysctl_src_len) > 0) {
+		sbuf = buf + le32toh(hdr->sysctl_src_len);
+		sbuf_len = le32toh(hdr->sysctl_src_len);
+	}
 
-		/* XXX I hate gotos */
-readmore:
-		/* Read data */
-		len = read(ns, rbuf + rlen, SYSCTL_BUF_LEN - rlen);
-		if (len <= 0) {
-			fprintf(stderr, "%s: fd %d: read returned %d, errno=%d\n",
+	/*
+	 * Allocate response buffer if requested.
+	 */
+	if (le32toh(hdr->sysctl_dst_len) > 0) {
+		wbuf = malloc(le32toh(hdr->sysctl_dst_len));
+		if (wbuf == NULL) {
+			fprintf(stderr, "%s: fd %d: malloc failed: %d\n",
 			    __func__,
 			    ns,
-			    len,
 			    errno);
-			goto next;
+			retval = 0;
+			goto finish;
 		}
-
-		rlen += len;
-
-		/*
-		 * Not enough data? Keep reading.
-		 */
-		if (rlen < sizeof(struct sysctl_req_hdr)) {
-			fprintf(stderr, "%s: fd %d: read %d btyes, rlen is now %d\n",
-			    __func__,
-			    ns,
-			    len,
-			    rlen);
-			goto readmore;
-		}
-
-		hdr = (struct sysctl_req_hdr *) rbuf;
-
-		/*
-		 * Do we have enough data to cover the payload length?
-		 */
-		if (le32toh(hdr->sysctl_req_len) < rlen) {
-			goto readmore;
-		}
-
-		/*
-		 * Ok, validate the various lengths.
-		 */
-
-		if (le32toh(hdr->sysctl_req_len) !=
-		    le32toh(hdr->sysctl_str_len)
-		    + le32toh(hdr->sysctl_src_len)
-		    + sizeof(struct sysctl_req_hdr)) {
-			fprintf(stderr, "%s: fd %d: length mismatch\n",
-			    __func__,
-			    ns);
-			fprintf(stderr, "%s: fd %d: hdr_len=%d, req_len=%d, str_len=%d, src_len=%d\n",
-			    __func__,
-			    ns,
-			    (int) sizeof(struct sysctl_req_hdr),
-			    le32toh(hdr->sysctl_req_len),
-			    le32toh(hdr->sysctl_str_len),
-			    le32toh(hdr->sysctl_src_len));
-			goto next;
-		}
-
-		if (le32toh(hdr->sysctl_dst_len) > SYSCTL_MAX_BUF_LEN) {
-			fprintf(stderr, "%s: fd %d: dst_len %d > %d\n",
-			    __func__,
-			    ns,
-			    le32toh(hdr->sysctl_dst_len),
-			    SYSCTL_MAX_BUF_LEN);
-			goto next;
-		}
-
-		/*
-		 * Populate the request string.
-		 */
-		req_str = malloc(le32toh(hdr->sysctl_str_len) + 1);
-		if (req_str == NULL) {
-			fprintf(stderr, "%s; fd %d: malloc failed (req_str)\n",
-			    __func__,
-			    ns);
-			goto next;
-		}
-		memcpy(req_str, rbuf + sizeof(struct sysctl_req_hdr),
-		    le32toh(hdr->sysctl_str_len));
-		req_str[le32toh(hdr->sysctl_str_len)] = '\0';
-
-		/*
-		 * If there's a request buffer, populate that.
-		 */
-		if (le32toh(hdr->sysctl_src_len) > 0) {
-			sbuf = rbuf + le32toh(hdr->sysctl_src_len);
-			sbuf_len = le32toh(hdr->sysctl_src_len);
-		}
-
-		/*
-		 * Allocate response buffer if requested.
-		 */
-		if (le32toh(hdr->sysctl_dst_len) > 0) {
-			wbuf = malloc(le32toh(hdr->sysctl_dst_len));
-			if (wbuf == NULL) {
-				fprintf(stderr, "%s: fd %d: malloc failed: %d\n",
-				    __func__,
-				    ns,
-				    errno);
-				goto next;
-			}
-			wbuf_len = le32toh(hdr->sysctl_dst_len);
-		}
+		wbuf_len = le32toh(hdr->sysctl_dst_len);
+	}
 
 		/* Issue sysctl */
 		fprintf(stderr,
@@ -259,13 +188,120 @@ readmore:
 		}
 
 		/* Done! */
+		retval = 1;
 
+finish:
+	if (req_str != NULL)
+		free(req_str);
+	if (wbuf != NULL)
+		free(wbuf);
+	return (retval);
+}
+
+void *
+passive_sysctl_listener(void *arg)
+{
+	int s, ns, r;
+	struct sockaddr_un sun;
+	char *rbuf;
+
+	uinet_initialize_thread();
+
+	rbuf = malloc(SYSCTL_BUF_LEN);
+	if (rbuf == NULL) {
+		printf("%s: malloc failed: %d\n", __func__, errno);
+		return (NULL);
+	}
+
+	bzero(&sun, sizeof(sun));
+	strcpy(sun.sun_path, "/tmp/sysctl.sock");
+	sun.sun_len = 0;
+	sun.sun_family = AF_UNIX;
+
+	printf("sysctl_listener: starting listener on %s\n", sun.sun_path);
+	s = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (s < 0) {
+		fprintf(stderr, "%s: socket failed: %d\n", __func__, errno);
+		return NULL;
+	}
+
+	r = bind(s, (struct sockaddr *) &sun, sizeof(sun));
+	if (r < 0) {
+		fprintf(stderr, "%s: bind failed: %d\n", __func__, errno);
+		return NULL;
+	}
+
+	r = listen(s, 10);
+	if (r < 0) {
+		fprintf(stderr, "%s: listen failed: %d\n", __func__, errno);
+		return NULL;
+	}
+
+	/*
+	 * Yes, I could make this threaded or non-blocking..
+	 */
+	for (;;) {
+		struct sockaddr_un sun_n;
+		socklen_t sl;
+		int len;
+		struct sysctl_req_hdr *hdr;
+		int rlen = 0;
+
+		ns = accept(s, (struct sockaddr *) &sun_n, &sl);
+		if (ns < 0) {
+			fprintf(stderr, "%s: accept failed: %d\n", __func__, errno);
+			continue;
+		}
+
+		/* XXX I hate gotos */
+readmore:
+		/* Read data */
+		len = read(ns, rbuf + rlen, SYSCTL_BUF_LEN - rlen);
+		if (len <= 0) {
+			fprintf(stderr, "%s: fd %d: read returned %d, errno=%d\n",
+			    __func__,
+			    ns,
+			    len,
+			    errno);
+			goto next;
+		}
+
+		rlen += len;
+
+		/*
+		 * Not enough data? Keep reading.
+		 */
+		if (rlen < sizeof(struct sysctl_req_hdr)) {
+			fprintf(stderr, "%s: fd %d: read %d btyes, rlen is now %d\n",
+			    __func__,
+			    ns,
+			    len,
+			    rlen);
+			goto readmore;
+		}
+
+		hdr = (struct sysctl_req_hdr *) rbuf;
+
+		/*
+		 * Do we have enough data to cover the payload length?
+		 */
+		if (le32toh(hdr->sysctl_req_len) < rlen) {
+			goto readmore;
+		}
+
+		/*
+		 * We have the entire payload.  Let's dispatch based
+		 * on type.
+		 */
+		(void) passive_sysctl_reqtype_str(ns, rbuf, rlen);
+
+		/* XXX until we've taught the loop about
+		 * how to consume readbuf data right and
+		 * have the remainder data be moved to the
+		 * head of the queue, let's just close it for
+		 * now.
+		 */
 next:
-		if (wbuf != NULL)
-			free(wbuf);
-		if (req_str != NULL)
-			free(req_str);
-
 		/* Close */
 		close(ns);
 	}
