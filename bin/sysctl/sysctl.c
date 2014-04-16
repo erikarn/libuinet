@@ -16,7 +16,7 @@
 #include "nv.h"
 
 static int
-uinet_sysctlbyname(int ns,
+u_sysctlbyname(int ns,
     const char *name,
     void *oldp,
     size_t *oldlenp,
@@ -134,7 +134,7 @@ main(int argc, char *argv[])
 		err(1, "calloc");
 
 	/* Do a sysctl */
-	r = uinet_sysctlbyname(s, req_str, resp_buf, &respbuf_len,
+	r = u_sysctlbyname(s, req_str, resp_buf, &respbuf_len,
 	    NULL, 0);
 	printf("%s: str=%s, r=%d, errno=%d, len=%d\n",
 	    __func__,
