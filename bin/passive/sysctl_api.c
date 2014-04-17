@@ -242,11 +242,15 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 		goto finish;
 	}
 	wbuf_len = nvlist_get_number(nvl, "sysctl_respbuf_len");
-	wbuf = calloc(1, wbuf_len);
-	if (wbuf == NULL) {
-		fprintf(stderr, "%s: fd %d: malloc failed\n", __func__, ns);
-		retval = 0;
-		goto finish;
+	if (wbuf_len == 0) {
+		wbuf = NULL;
+	} else {
+		wbuf = calloc(1, wbuf_len);
+		if (wbuf == NULL) {
+			fprintf(stderr, "%s: fd %d: malloc failed\n", __func__, ns);
+			retval = 0;
+			goto finish;
+		}
 	}
 
 	/* sysctl_reqbuf */
@@ -259,11 +263,14 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 
 	/* Issue sysctl */
 	fprintf(stderr,
-	    "%s: fd %d: sysctl oid src_len=%d, dst_len=%d\n",
+	    "%s: fd %d: sysctl oid oidlen=%d oldp=%p, oldplen=%d, newp=%p, newplen=%d\n",
 	    __func__,
 	    ns,
-	    (int) sbuf_len,
-	    (int) wbuf_len);
+	    (int) (req_oid_len / sizeof(int)),
+	    wbuf,
+	    (int) wbuf_len,
+	    sbuf,
+	    (int) sbuf_len);
 
 	/* XXX typecasting sbuf and req_oid sucks */
 	error = uinet_sysctl((int *) req_oid, req_oid_len / sizeof(int),
@@ -279,12 +286,20 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	    (unsigned long long) wbuf_len,
 	    (unsigned long long) rval);
 
+
+	/*
+	 * We only copy the data back if wbuf is not NULL.
+	 *
+	 * The undocumented size lookup in sysctl is done by
+	 * doing a sysctl fetch on the given OID but with oldplen=0 and
+	 * oldp=NULL, oldplen gets updated with the storage size.
+	 */
 	/*
 	 * XXX Validate the response back from uinet_sysctl()
 	 * is within bounds for the response back to the
 	 * client.
 	 */
-	if (error == 0 && rval >= wbuf_len) {
+	if (wbuf != NULL && error == 0 && rval >= wbuf_len) {
 		fprintf(stderr, "%s: fd %d: rval (%llu) > wbuf_len (%llu)\n",
 		    __func__,
 		    ns,
@@ -303,9 +318,10 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	}
 
 	nvlist_add_number(nvl_resp, "sysctl_errno", error);
-	if (error == 0) {
+	if (error == 0 && wbuf != NULL) {
 		nvlist_add_binary(nvl_resp, "sysctl_respbuf", wbuf, rval);
 	}
+	nvlist_add_number(nvl_resp, "sysctl_respbuf_len", rval);
 
 	if (nvlist_send(ns, nvl_resp) < 0) {
 		fprintf(stderr, "%s: fd %d: nvlist_send failed; errno=%d\n",
