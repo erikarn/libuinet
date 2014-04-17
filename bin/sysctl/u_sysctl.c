@@ -102,6 +102,15 @@ u_sysctl(int ns,
 	size_t r_len;
 	int r_errno;
 
+#if 0
+	printf("sysctl: nl=%d, oldp=%p, oldlen=%d, newp=%p, newlen=%d\n",
+	    namelen,
+	    oldp,
+	    (int) *oldlenp,
+	    newp,
+	    (int) newlen);
+#endif
+
 	/* Create nvlist to populate the request into */
 	nvl = nvlist_create(0);
 	if (nvl == NULL) {
@@ -143,10 +152,12 @@ u_sysctl(int ns,
 	if (nvlist_exists_binary(nvl_resp, "sysctl_respbuf")) {
 		rbuf = nvlist_get_binary(nvl_resp, "sysctl_respbuf", &r_len);
 		memcpy(oldp, rbuf, r_len);
-		*oldlenp = r_len;
+	} else if (nvlist_exists_number(nvl_resp, "sysctl_respbuf_len")) {
+		r_len = nvlist_get_number(nvl_resp, "sysctl_respbuf_len");
 	} else {
 		r_len = 0;
 	}
+	*oldlenp = r_len;
 
 	retval = 0;
 	/* XXX */
