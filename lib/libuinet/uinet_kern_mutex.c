@@ -106,8 +106,6 @@ mutex_init(void)
 {
 	mtx_init(&Giant, "Giant", NULL, MTX_DEF | MTX_RECURSE);
 	mtx_init(&proc0.p_mtx, "process lock", NULL, MTX_DEF | MTX_DUPOK);
-	/* XXX? */
-	sx_init(&allproc_lock, "allproc_lock");
 }
 
 void
