@@ -66,7 +66,7 @@ passive_sysctl_reqtype_str(int ns, nvlist_t *nvl)
 	char *req_str = NULL;
 	const char *sbuf;
 	int error;
-	size_t rval;
+	size_t rval = 0;
 
 	/* Validate fields are here */
 	if (! nvlist_exists_string(nvl, "sysctl_str")) {
@@ -87,9 +87,10 @@ passive_sysctl_reqtype_str(int ns, nvlist_t *nvl)
 		goto finish;
 	}
 	if (nvlist_get_number(nvl, "sysctl_respbuf_len") > SYSCTL_MAX_REQ_BUF_LEN) {
-		fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is too big!\n",
+		fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is too big (%llu)!\n",
 		    __func__,
-		    ns);
+		    ns,
+		    (unsigned long long) nvlist_get_number(nvl, "sysctl_respbuf_len"));
 		retval = 0;
 		goto finish;
 	}
@@ -203,7 +204,7 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	const int *req_oid = NULL;
 	const char *sbuf;
 	int error;
-	size_t rval;
+	size_t rval = 0;
 	size_t req_oid_len;
 
 	/* Validate fields are here */
@@ -235,9 +236,10 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 		goto finish;
 	}
 	if (nvlist_get_number(nvl, "sysctl_respbuf_len") > SYSCTL_MAX_REQ_BUF_LEN) {
-		fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is too big!\n",
+		fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is too big! (%llu)\n",
 		    __func__,
-		    ns);
+		    ns,
+		    (unsigned long long) nvlist_get_number(nvl, "sysctl_respbuf_len"));
 		retval = 0;
 		goto finish;
 	}
