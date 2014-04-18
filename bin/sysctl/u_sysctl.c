@@ -23,7 +23,7 @@ u_sysctlbyname(int ns,
     const void *newp,
     size_t newlen)
 {
-	nvlist_t *nvl, *nvl_resp;
+	nvlist_t *nvl = NULL, *nvl_resp = NULL;
 	int retval = 0;
 	const char *rbuf;
 	size_t r_len;
@@ -96,7 +96,7 @@ u_sysctl(int ns,
     const void *newp,
     size_t newlen)
 {
-	nvlist_t *nvl, *nvl_resp;
+	nvlist_t *nvl = NULL, *nvl_resp = NULL;
 	int retval = 0;
 	const char *rbuf;
 	size_t r_len;
