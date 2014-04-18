@@ -159,9 +159,12 @@ u_sysctl(int ns,
 	}
 	*oldlenp = r_len;
 
-	retval = 0;
-	/* XXX */
-	errno = r_errno;
+	if (r_errno == 0) {
+		retval = 0;
+	} else {
+		retval = -1;
+		errno = r_errno;
+	}
 
 done:
 	if (nvl)
