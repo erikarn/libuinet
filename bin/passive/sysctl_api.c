@@ -353,6 +353,8 @@ passive_sysctl_listener(void *arg)
 
 	uinet_initialize_thread();
 
+	(void) unlink("/tmp/sysctl.sock");
+
 	bzero(&sun, sizeof(sun));
 	strcpy(sun.sun_path, "/tmp/sysctl.sock");
 	sun.sun_len = 0;
