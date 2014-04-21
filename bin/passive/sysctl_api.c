@@ -57,6 +57,7 @@
 static int
 passive_sysctl_reqtype_str(int ns, nvlist_t *nvl)
 {
+#if 0
 	struct sysctl_req_hdr *hdr;
 	nvlist_t *nvl_resp = NULL;
 	int retval = 0;
@@ -181,6 +182,8 @@ finish:
 	if (nvl_resp != NULL)
 		nvlist_destroy(nvl_resp);
 	return (retval);
+#endif
+	return (-1);
 }
 
 /*
@@ -227,23 +230,28 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 		goto finish;
 	}
 
-	/* sysctl_respbuf_len */
-	if (! nvlist_exists_number(nvl, "sysctl_respbuf_len")) {
-		fprintf(stderr, "%s: fd %d: missing sysctl_respbuf_len\n",
-		    __func__,
-		    ns);
-		retval = 0;
-		goto finish;
+	/*
+	 * We may not have a response buffer length provided.
+	 * This is done when writing a sysctl value.
+	 */
+	if (nvlist_exists_number(nvl, "sysctl_respbuf_len")) {
+		if (nvlist_get_number(nvl, "sysctl_respbuf_len") >
+			    SYSCTL_MAX_REQ_BUF_LEN) {
+			fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is "
+			    "too big! (%llu)\n",
+			    __func__,
+			    ns,
+			    (unsigned long long) nvlist_get_number(nvl,
+			      "sysctl_respbuf_len"));
+			retval = 0;
+			goto finish;
+		}
+		wbuf_len = nvlist_get_number(nvl, "sysctl_respbuf_len");
+	} else {
+		wbuf_len = 0;
 	}
-	if (nvlist_get_number(nvl, "sysctl_respbuf_len") > SYSCTL_MAX_REQ_BUF_LEN) {
-		fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is too big! (%llu)\n",
-		    __func__,
-		    ns,
-		    (unsigned long long) nvlist_get_number(nvl, "sysctl_respbuf_len"));
-		retval = 0;
-		goto finish;
-	}
-	wbuf_len = nvlist_get_number(nvl, "sysctl_respbuf_len");
+
+	/* If wbuf_len is 0, then pass in a NULL wbuf */
 	if (wbuf_len == 0) {
 		wbuf = NULL;
 	} else {
@@ -275,8 +283,13 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	    (int) sbuf_len);
 
 	/* XXX typecasting sbuf and req_oid sucks */
+	/*
+	 * Pass in a NULL wbuf_len if wbuf is NULL.  sysctl writing
+	 * passes in a NULL buffer and NULL oidlenp.
+	 */
 	error = uinet_sysctl((int *) req_oid, req_oid_len / sizeof(int),
-	    wbuf, &wbuf_len,
+	    wbuf,
+	    wbuf == NULL ? NULL : &wbuf_len,
 	    (char *) sbuf, sbuf_len,
 	    &rval,
 	    0);
