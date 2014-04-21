@@ -15,32 +15,28 @@
 #include "sysctl_api.h"
 #include "nv.h"
 
-int
-u_sysctlbyname(int ns,
-    const char *name,
+static int
+u_sysctl_do_sysctl(struct nvlist *nvl, int ns,
     void *oldp,
     size_t *oldlenp,
     const void *newp,
     size_t newlen)
 {
-	nvlist_t *nvl = NULL, *nvl_resp = NULL;
+	nvlist_t *nvl_resp = NULL;
 	int retval = 0;
+	int r_errno;
 	const char *rbuf;
 	size_t r_len;
-	int r_errno;
 
-	/* Create nvlist to populate the request into */
-	nvl = nvlist_create(0);
-	if (nvl == NULL) {
-		warn("nvlist_create");
-		retval = -1;
-		goto done;
-	}
+	/* Setup request and response buffer information */
 
-	/* Create nvlist for a sysctl_str request */
-	nvlist_add_string(nvl, "type", "sysctl_str");
-	nvlist_add_string(nvl, "sysctl_str", name);
-	nvlist_add_number(nvl, "sysctl_respbuf_len", *oldlenp);
+	/*
+	 * Writing a value may pass in a NULL oldlenp, so only conditionally
+	 * send it.
+	 */
+	if (oldlenp != NULL)
+		nvlist_add_number(nvl, "sysctl_respbuf_len", *oldlenp);
+
 	if (newlen > 0) {
 		nvlist_add_binary(nvl, "sysctl_reqbuf", newp, newlen);
 	}
@@ -70,20 +66,57 @@ u_sysctlbyname(int ns,
 	if (nvlist_exists_binary(nvl_resp, "sysctl_respbuf")) {
 		rbuf = nvlist_get_binary(nvl_resp, "sysctl_respbuf", &r_len);
 		memcpy(oldp, rbuf, r_len);
-		*oldlenp = r_len;
+	} else if (nvlist_exists_number(nvl_resp, "sysctl_respbuf_len")) {
+		r_len = nvlist_get_number(nvl_resp, "sysctl_respbuf_len");
 	} else {
 		r_len = 0;
 	}
 
-	retval = 0;
-	/* XXX */
-	errno = r_errno;
+	if (oldlenp != NULL)
+		*oldlenp = r_len;
+
+	if (r_errno == 0) {
+		retval = 0;
+	} else {
+		retval = -1;
+		errno = r_errno;
+	}
+
+done:
+	if (nvl_resp)
+		nvlist_destroy(nvl_resp);
+	return (retval);
+}
+
+int
+u_sysctlbyname(int ns,
+    const char *name,
+    void *oldp,
+    size_t *oldlenp,
+    const void *newp,
+    size_t newlen)
+{
+	nvlist_t *nvl = NULL;
+	int retval = 0;
+
+	/* Create nvlist to populate the request into */
+	nvl = nvlist_create(0);
+	if (nvl == NULL) {
+		warn("nvlist_create");
+		retval = -1;
+		goto done;
+	}
+
+	/* Create nvlist for a sysctl_str request */
+	nvlist_add_string(nvl, "type", "sysctl_str");
+	nvlist_add_string(nvl, "sysctl_str", name);
+
+	/* XXX this sets errno as appropriate */
+	retval = u_sysctl_do_sysctl(nvl, ns, oldp, oldlenp, newp, newlen);
 
 done:
 	if (nvl)
 		nvlist_destroy(nvl);
-	if (nvl_resp)
-		nvlist_destroy(nvl_resp);
 	return (retval);
 }
 
@@ -122,55 +155,13 @@ u_sysctl(int ns,
 	/* Create nvlist for a sysctl_oid request */
 	nvlist_add_string(nvl, "type", "sysctl_oid");
 	nvlist_add_binary(nvl, "sysctl_oid", oid, namelen * sizeof(int));
-	nvlist_add_number(nvl, "sysctl_respbuf_len", *oldlenp);
-	if (newlen > 0) {
-		nvlist_add_binary(nvl, "sysctl_reqbuf", newp, newlen);
-	}
 
-	/* Send command */
-	if (nvlist_send(ns, nvl) < 0) {
-		warn("nvlist_send");
-		retval = -1;
-		goto done;
-	}
-
-	/* Read response */
-	nvl_resp = nvlist_recv(ns);
-	if (nvl_resp == NULL) {
-		warn("nvlist_recv");
-		retval = -1;
-		goto done;
-	}
-
-	if (! nvlist_exists_number(nvl_resp, "sysctl_errno")) {
-		fprintf(stderr, "response: no errno?\n");
-		goto done;
-	}
-	r_errno = (int) nvlist_get_number(nvl_resp, "sysctl_errno");
-
-	/* XXX validate r_len versus oldlenp */
-	if (nvlist_exists_binary(nvl_resp, "sysctl_respbuf")) {
-		rbuf = nvlist_get_binary(nvl_resp, "sysctl_respbuf", &r_len);
-		memcpy(oldp, rbuf, r_len);
-	} else if (nvlist_exists_number(nvl_resp, "sysctl_respbuf_len")) {
-		r_len = nvlist_get_number(nvl_resp, "sysctl_respbuf_len");
-	} else {
-		r_len = 0;
-	}
-	*oldlenp = r_len;
-
-	if (r_errno == 0) {
-		retval = 0;
-	} else {
-		retval = -1;
-		errno = r_errno;
-	}
+	/* XXX this sets errno as appropriate */
+	retval = u_sysctl_do_sysctl(nvl, ns, oldp, oldlenp, newp, newlen);
 
 done:
 	if (nvl)
 		nvlist_destroy(nvl);
-	if (nvl_resp)
-		nvlist_destroy(nvl_resp);
 	return (retval);
 }
 
