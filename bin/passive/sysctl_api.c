@@ -43,10 +43,11 @@
 #include "nv.h"
 #include "sysctl_api.h"
 
+#if 0
 #define	SYSCTL_BUF_LEN		131072
 #define	SYSCTL_MAX_BUF_LEN	1048576
 #define	SYSCTL_MAX_STR_LEN	1024
-#define	SYSCTL_MAX_REQ_BUF_LEN	1048576
+#endif
 
 #define	UINET_SYSCTL_DEBUG
 
@@ -242,7 +243,7 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	 */
 	if (nvlist_exists_number(nvl, "sysctl_respbuf_len")) {
 		if (nvlist_get_number(nvl, "sysctl_respbuf_len") >
-			    SYSCTL_MAX_REQ_BUF_LEN) {
+			    U_SYSCTL_MAX_REQ_BUF_LEN) {
 #ifdef	UINET_SYSCTL_DEBUG
 			fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is "
 			    "too big! (%llu)\n",
