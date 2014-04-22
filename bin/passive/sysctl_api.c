@@ -48,6 +48,8 @@
 #define	SYSCTL_MAX_STR_LEN	1024
 #define	SYSCTL_MAX_REQ_BUF_LEN	1048576
 
+#define	UINET_SYSCTL_DEBUG
+
 /*
  * Handle sysctl string type requests.
  *
@@ -212,20 +214,24 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 
 	/* Validate fields are here */
 	if (! nvlist_exists_binary(nvl, "sysctl_oid")) {
+#ifdef	UINET_SYSCTL_DEBUG
 		fprintf(stderr, "%s: fd %d: missing sysctl_oid\n",
 		    __func__,
 		    ns);
+#endif
 		retval = 0;
 		goto finish;
 	}
 	req_oid = (const int *) nvlist_get_binary(nvl, "sysctl_oid",
 	    &req_oid_len);
 	if (req_oid_len % sizeof(int) != 0) {
+#ifdef	UINET_SYSCTL_DEBUG
 		fprintf(stderr, "%s: fd %d: req_oid_len (%llu) is not a multiple of %d\n",
 		    __func__,
 		    ns,
 		    (unsigned long long) req_oid_len,
 		    (int) sizeof(int));
+#endif
 		retval = 0;
 		goto finish;
 	}
@@ -237,12 +243,14 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	if (nvlist_exists_number(nvl, "sysctl_respbuf_len")) {
 		if (nvlist_get_number(nvl, "sysctl_respbuf_len") >
 			    SYSCTL_MAX_REQ_BUF_LEN) {
+#ifdef	UINET_SYSCTL_DEBUG
 			fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is "
 			    "too big! (%llu)\n",
 			    __func__,
 			    ns,
 			    (unsigned long long) nvlist_get_number(nvl,
 			      "sysctl_respbuf_len"));
+#endif
 			retval = 0;
 			goto finish;
 		}
@@ -257,7 +265,9 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	} else {
 		wbuf = calloc(1, wbuf_len);
 		if (wbuf == NULL) {
+#ifdef	UINET_SYSCTL_DEBUG
 			fprintf(stderr, "%s: fd %d: malloc failed\n", __func__, ns);
+#endif
 			retval = 0;
 			goto finish;
 		}
@@ -272,6 +282,7 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	}
 
 	/* Issue sysctl */
+#ifdef	UINET_SYSCTL_DEBUG
 	fprintf(stderr,
 	    "%s: fd %d: sysctl oid oidlen=%d oldp=%p, oldplen=%d, newp=%p, newplen=%d\n",
 	    __func__,
@@ -281,6 +292,7 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	    (int) wbuf_len,
 	    sbuf,
 	    (int) sbuf_len);
+#endif
 
 	/* XXX typecasting sbuf and req_oid sucks */
 	/*
@@ -294,13 +306,14 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	    &rval,
 	    0);
 
+#ifdef	UINET_SYSCTL_DEBUG
 	fprintf(stderr, "%s: fd %d: sysctl error=%d, wbuf_len=%llu, rval=%llu\n",
 	    __func__,
 	    ns,
 	    (int) error,
 	    (unsigned long long) wbuf_len,
 	    (unsigned long long) rval);
-
+#endif
 
 	/*
 	 * We only copy the data back if wbuf is not NULL.
@@ -315,11 +328,13 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	 * client.
 	 */
 	if (wbuf != NULL && error == 0 && rval >= wbuf_len) {
+#ifdef	UINET_SYSCTL_DEBUG
 		fprintf(stderr, "%s: fd %d: rval (%llu) > wbuf_len (%llu)\n",
 		    __func__,
 		    ns,
 		    (unsigned long long) rval,
 		    (unsigned long long) wbuf_len);
+#endif
 		retval = 0;
 		goto finish;
 	}
@@ -422,10 +437,12 @@ passive_sysctl_listener(void *arg)
 			}
 			type = nvlist_get_string(nvl, "type");
 
+#ifdef	UINET_SYSCTL_DEBUG
 			fprintf(stderr, "%s: fd %d: type=%s\n",
 			    __func__,
 			    ns,
 			    type);
+#endif
 
 			/* Dispatch as appropriate */
 			if (strncmp(type, "sysctl_str", 10) == 0) {
