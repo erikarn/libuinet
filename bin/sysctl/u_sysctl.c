@@ -6,14 +6,31 @@
 #include <err.h>
 #include <string.h>
 #include <strings.h>
+#include <fcntl.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/endian.h>
+#include <sys/param.h>	/* for round_page() */
+
+#include <sys/mman.h>
 
 #include "sysctl_api.h"
 #include "nv.h"
+
+/*
+ * XXX TODO:
+ *
+ * + the sysctl shm stuff should be a transaction based thing
+ * + the API should be modified so it returns the buffer, and then
+ *   has a "finish" function that frees it if appropriate - that
+ *   way for shm buffers we don't need to double allocate things.
+ * + .. we shouldn't be doing all the mmap / munmap stuff - it
+ *   will cause IPI shootdowns as the memory map in the libuinet
+ *   using code has its memory map change.  I'll solve that
+ *   later.
+ */
 
 static int
 u_sysctl_do_sysctl(struct nvlist *nvl, int ns,
@@ -28,7 +45,55 @@ u_sysctl_do_sysctl(struct nvlist *nvl, int ns,
 	const char *rbuf;
 	size_t r_len;
 
+	/* XXX Eventually this should be in a sysctl transaction struct */
+	int shm_fd = -1;
+	char *shm_mem = NULL;
+	size_t shm_len = 0;
+	char shm_path[128];
+
 	/* Setup request and response buffer information */
+
+	/*
+	 * If the requested size is provided and it's greater than the
+	 * maximum size allowed, we'll flip to using shm
+	 */
+	if (oldlenp != NULL && *oldlenp >= U_SYSCTL_MAX_REQ_BUF_LEN) {
+		/* Construct a shm path */
+		/* XXX should make this less guessable */
+		snprintf(shm_path, 128, "/sysctl.%ld", (long) arc4random());
+
+		/* Open it */
+		shm_fd = shm_open(shm_path, O_CREAT | O_RDWR, 0640);
+		if (shm_fd < 0) {
+			warn("shm_open (%s)", shm_path);
+			retval = -1;
+			goto done;
+		}
+
+		/*
+		 * Calculate a mmap size that's a multiple of
+		 * the system page length.
+		 */
+		shm_len = round_page(*oldlenp);
+
+		/* make it that big! */
+		if (ftruncate(shm_fd, shm_len) < 0) {
+			warn("ftruncate");
+			goto done;
+		}
+
+		/* mmap it */
+		shm_mem = mmap(NULL, shm_len, PROT_READ | PROT_WRITE,
+		    0, shm_fd, 0);
+		if (shm_mem == NULL) {
+			warn("mmap");
+			goto done;
+		}
+
+		/* add the shm path to the outbound request */
+		nvlist_add_string(nvl, "sysctl_respbuf_shm_path", shm_path);
+		nvlist_add_number(nvl, "sysctl_respbuf_shm_len", shm_len);
+	}
 
 	/*
 	 * Writing a value may pass in a NULL oldlenp, so only conditionally
@@ -66,6 +131,9 @@ u_sysctl_do_sysctl(struct nvlist *nvl, int ns,
 	if (nvlist_exists_binary(nvl_resp, "sysctl_respbuf")) {
 		rbuf = nvlist_get_binary(nvl_resp, "sysctl_respbuf", &r_len);
 		memcpy(oldp, rbuf, r_len);
+	} else if (shm_mem != NULL) {
+		memcpy(oldp, shm_mem, r_len);
+		r_len = nvlist_get_number(nvl_resp, "sysctl_respbuf_shm_len");
 	} else if (nvlist_exists_number(nvl_resp, "sysctl_respbuf_len")) {
 		r_len = nvlist_get_number(nvl_resp, "sysctl_respbuf_len");
 	} else {
@@ -83,6 +151,12 @@ u_sysctl_do_sysctl(struct nvlist *nvl, int ns,
 	}
 
 done:
+	if (shm_mem != NULL)
+		munmap(shm_mem, shm_len);
+	if (shm_fd != -1) {
+		close(shm_fd);
+		shm_unlink(shm_path);
+	}
 	if (nvl_resp)
 		nvlist_destroy(nvl_resp);
 	return (retval);
