@@ -879,14 +879,11 @@ int main (int argc, char **argv)
 								    interface_thread_start, &interfaces[i]);
 	}
 
-<<<<<<< HEAD
 	error = pthread_create(&sysctl_thr, NULL, passive_sysctl_listener, NULL);
 	if (error != 0) {
 		printf("Failed to bring up sysctl thread: %d\n", errno);
 	}
 
-=======
->>>>>>> 7c493ffa2b42b5f64b9d5923063a507d8e89a614
 	for (i = 0; i < num_interfaces; i++) {
 		if (0 == interfaces[i].thread_create_result)
 			pthread_join(interfaces[i].thread, NULL);
