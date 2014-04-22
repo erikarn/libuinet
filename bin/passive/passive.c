@@ -69,6 +69,7 @@ struct interface_config {
 	int type;
 	int instance;
 	char *alias_prefix;
+	int do_tcpstats;
 };
 
 struct server_config {
@@ -120,6 +121,7 @@ passive_receive_cb(struct ev_loop *loop, ev_uinet *w, int revents)
 	struct uinet_uio uio;
 	int max_read;
 	int read_size;
+	int bytes_read;
 	int error;
 	int flags;
 	int i;
@@ -131,7 +133,8 @@ passive_receive_cb(struct ev_loop *loop, ev_uinet *w, int revents)
 	if (max_read <= 0) {
 		/* the watcher should never be invoked if there is no error and there no bytes to be read */
 		assert(max_read != 0);
-		printf("%s: can't read, closing\n", conn->label);
+		if (conn->server->verbose)
+			printf("%s: can't read, closing\n", conn->label);
 		goto err;
 	} else {
 		read_size = imin(max_read, BUFFER_SIZE - 1);
@@ -150,9 +153,9 @@ passive_receive_cb(struct ev_loop *loop, ev_uinet *w, int revents)
 			goto err;
 		}
 
-		assert(uio.uio_resid == 0);
+		bytes_read = read_size - uio.uio_resid;
 
-		conn->bytes_read += read_size;
+		conn->bytes_read += bytes_read;
 
 		if (conn->server->verbose > 2)
 			print_tcp_state(w->so, conn->label);
@@ -163,15 +166,15 @@ passive_receive_cb(struct ev_loop *loop, ev_uinet *w, int revents)
 		}
 
 		if (conn->server->verbose)
-			printf("To %s (%u bytes, %llu total, %s)\n", conn->label, read_size,
+			printf("To %s (%u bytes, %llu total, %s)\n", conn->label, bytes_read,
 			       (unsigned long long)conn->bytes_read, flags & UINET_MSG_HOLE_BREAK ? "HOLE" : "normal");
 		
 		if (conn->server->verbose > 1) {
-			buffer[read_size] = '\0';
+			buffer[bytes_read] = '\0';
 			printf("----------------------------------------------------------------------------------------\n");
 			skipped = 0;
 			printable = 0;
-			for (i = 0; i < read_size; i++) {
+			for (i = 0; i < bytes_read; i++) {
 				if ((buffer[i] >= 0x20 && buffer[i] <= 0x7e) || buffer[i] == 0x0a || buffer[i] == 0x0d || buffer[i] == 0x09) {
 					printable++;
 				} else {
@@ -207,6 +210,7 @@ passive_receive_cb(struct ev_loop *loop, ev_uinet *w, int revents)
 
 err:
 	ev_uinet_stop(loop, w);
+	ev_uinet_detach(w->ctx);
 	uinet_soclose(w->so);
 	free(conn);
 }
@@ -229,7 +233,8 @@ accept_cb(struct ev_loop *loop, ev_uinet *w, int revents)
 	if (0 != (error = uinet_soaccept(w->so, NULL, &newso))) {
 		printf("accept failed (%d)\n", error);
 	} else {
-		printf("accept succeeded\n");
+		if (passive->verbose)
+			printf("accept succeeded\n");
 		
 		soctx = ev_uinet_attach(newso);
 		if (NULL == soctx) {
@@ -426,11 +431,192 @@ fail:
 }
 
 
+static void
+dump_ifstat(const char *name)
+{
+	struct uinet_ifstat stat;
+	int perline = 3;
+	int index = 1;
+
+#define PRINT_IFSTAT(s) printf("%-26s= %-10lu%s", #s, stat.s, (index % perline == 0) ? "\n" : "  "); index++ 
+
+	uinet_getifstat(name, &stat);
+
+	printf("========================================================================\n");
+	printf("%s:\n", name);
+
+	PRINT_IFSTAT(ifi_ipackets);
+	PRINT_IFSTAT(ifi_ierrors);
+	PRINT_IFSTAT(ifi_opackets);
+	PRINT_IFSTAT(ifi_oerrors);
+	PRINT_IFSTAT(ifi_collisions);
+	PRINT_IFSTAT(ifi_ibytes);
+	PRINT_IFSTAT(ifi_obytes);
+	PRINT_IFSTAT(ifi_imcasts);
+	PRINT_IFSTAT(ifi_omcasts);
+	PRINT_IFSTAT(ifi_iqdrops);
+	PRINT_IFSTAT(ifi_noproto);
+	PRINT_IFSTAT(ifi_hwassist);
+	PRINT_IFSTAT(ifi_epoch);
+
+	printf("\n");
+	printf("========================================================================\n");
+
+
+#undef PRINT_IFSTAT
+}
+
+
+static void
+dump_tcpstat()
+{
+	struct uinet_tcpstat stat;
+	int perline = 3;
+	int index = 1;
+
+#define PRINT_TCPSTAT(s) printf("%-26s= %-10lu%s", #s, stat.s, (index % perline == 0) ? "\n" : "  "); index++ 
+
+	uinet_gettcpstat(&stat);
+
+	printf("========================================================================\n");
+
+	PRINT_TCPSTAT(tcps_connattempt);
+	PRINT_TCPSTAT(tcps_accepts);
+	PRINT_TCPSTAT(tcps_connects);
+	PRINT_TCPSTAT(tcps_drops);
+	PRINT_TCPSTAT(tcps_conndrops);
+	PRINT_TCPSTAT(tcps_minmssdrops);
+	PRINT_TCPSTAT(tcps_closed);
+	PRINT_TCPSTAT(tcps_segstimed);
+	PRINT_TCPSTAT(tcps_rttupdated);
+	PRINT_TCPSTAT(tcps_delack);
+	PRINT_TCPSTAT(tcps_timeoutdrop);
+	PRINT_TCPSTAT(tcps_rexmttimeo);
+	PRINT_TCPSTAT(tcps_persisttimeo);
+	PRINT_TCPSTAT(tcps_keeptimeo);
+	PRINT_TCPSTAT(tcps_keepprobe);
+	PRINT_TCPSTAT(tcps_keepdrops);
+
+	PRINT_TCPSTAT(tcps_sndtotal);
+	PRINT_TCPSTAT(tcps_sndpack);
+	PRINT_TCPSTAT(tcps_sndbyte);
+	PRINT_TCPSTAT(tcps_sndrexmitpack);
+	PRINT_TCPSTAT(tcps_sndrexmitbyte);
+	PRINT_TCPSTAT(tcps_sndrexmitbad);
+	PRINT_TCPSTAT(tcps_sndacks);
+	PRINT_TCPSTAT(tcps_sndprobe);
+	PRINT_TCPSTAT(tcps_sndurg);
+	PRINT_TCPSTAT(tcps_sndwinup);
+	PRINT_TCPSTAT(tcps_sndctrl);
+
+	PRINT_TCPSTAT(tcps_rcvtotal);
+	PRINT_TCPSTAT(tcps_rcvpack);
+	PRINT_TCPSTAT(tcps_rcvbyte);
+	PRINT_TCPSTAT(tcps_rcvbadsum);
+	PRINT_TCPSTAT(tcps_rcvbadoff);
+	PRINT_TCPSTAT(tcps_rcvmemdrop);
+	PRINT_TCPSTAT(tcps_rcvshort);
+	PRINT_TCPSTAT(tcps_rcvduppack);
+	PRINT_TCPSTAT(tcps_rcvdupbyte);
+	PRINT_TCPSTAT(tcps_rcvpartduppack);
+	PRINT_TCPSTAT(tcps_rcvpartdupbyte);
+	PRINT_TCPSTAT(tcps_rcvoopack);
+	PRINT_TCPSTAT(tcps_rcvoobyte);
+	PRINT_TCPSTAT(tcps_rcvpackafterwin);
+	PRINT_TCPSTAT(tcps_rcvbyteafterwin);
+	PRINT_TCPSTAT(tcps_rcvafterclose);
+	PRINT_TCPSTAT(tcps_rcvwinprobe);
+	PRINT_TCPSTAT(tcps_rcvdupack);
+	PRINT_TCPSTAT(tcps_rcvacktoomuch);
+	PRINT_TCPSTAT(tcps_rcvackpack);
+	PRINT_TCPSTAT(tcps_rcvackbyte);
+	PRINT_TCPSTAT(tcps_rcvwinupd);
+	PRINT_TCPSTAT(tcps_pawsdrop);
+	PRINT_TCPSTAT(tcps_predack);
+	PRINT_TCPSTAT(tcps_preddat);
+	PRINT_TCPSTAT(tcps_pcbcachemiss);
+	PRINT_TCPSTAT(tcps_cachedrtt);
+	PRINT_TCPSTAT(tcps_cachedrttvar);
+	PRINT_TCPSTAT(tcps_cachedssthresh);
+	PRINT_TCPSTAT(tcps_usedrtt);
+	PRINT_TCPSTAT(tcps_usedrttvar);
+	PRINT_TCPSTAT(tcps_usedssthresh);
+	PRINT_TCPSTAT(tcps_persistdrop);
+	PRINT_TCPSTAT(tcps_badsyn);
+	PRINT_TCPSTAT(tcps_mturesent);
+	PRINT_TCPSTAT(tcps_listendrop);
+	PRINT_TCPSTAT(tcps_badrst);
+
+	PRINT_TCPSTAT(tcps_sc_added);
+	PRINT_TCPSTAT(tcps_sc_retransmitted);
+	PRINT_TCPSTAT(tcps_sc_dupsyn);
+	PRINT_TCPSTAT(tcps_sc_dropped);
+	PRINT_TCPSTAT(tcps_sc_completed);
+	PRINT_TCPSTAT(tcps_sc_bucketoverflow);
+	PRINT_TCPSTAT(tcps_sc_cacheoverflow);
+	PRINT_TCPSTAT(tcps_sc_reset);
+	PRINT_TCPSTAT(tcps_sc_stale);
+	PRINT_TCPSTAT(tcps_sc_aborted);
+	PRINT_TCPSTAT(tcps_sc_badack);
+	PRINT_TCPSTAT(tcps_sc_unreach);
+	PRINT_TCPSTAT(tcps_sc_zonefail);
+	PRINT_TCPSTAT(tcps_sc_sendcookie);
+	PRINT_TCPSTAT(tcps_sc_recvcookie);
+
+	PRINT_TCPSTAT(tcps_hc_added);
+	PRINT_TCPSTAT(tcps_hc_bucketoverflow);
+
+	PRINT_TCPSTAT(tcps_finwait2_drops);
+
+	PRINT_TCPSTAT(tcps_sack_recovery_episode);
+	PRINT_TCPSTAT(tcps_sack_rexmits);
+	PRINT_TCPSTAT(tcps_sack_rexmit_bytes);
+	PRINT_TCPSTAT(tcps_sack_rcv_blocks);
+	PRINT_TCPSTAT(tcps_sack_send_blocks);
+	PRINT_TCPSTAT(tcps_sack_sboverflow);
+	
+	PRINT_TCPSTAT(tcps_ecn_ce);
+	PRINT_TCPSTAT(tcps_ecn_ect0);
+	PRINT_TCPSTAT(tcps_ecn_ect1);
+	PRINT_TCPSTAT(tcps_ecn_shs);
+	PRINT_TCPSTAT(tcps_ecn_rcwnd);
+
+	PRINT_TCPSTAT(tcps_sig_rcvgoodsig);
+	PRINT_TCPSTAT(tcps_sig_rcvbadsig);
+	PRINT_TCPSTAT(tcps_sig_err_buildsig);
+	PRINT_TCPSTAT(tcps_sig_err_sigopt);
+	PRINT_TCPSTAT(tcps_sig_err_nosigopt);
+
+#undef PRINT_TCPSTAT
+
+	printf("\n");
+	printf("========================================================================\n");
+}
+
+
+static void
+if_stats_timer_cb(struct ev_loop *loop, ev_timer *w, int revents)
+{
+	struct interface_config *cfg = w->data;
+
+	dump_ifstat(cfg->alias);
+	if (cfg->do_tcpstats) {
+		dump_tcpstat();
+	}
+}
+
+
 void *interface_thread_start(void *arg)
 {
 	struct interface_config *cfg = arg;
+	ev_timer if_stats_timer;
 
 	uinet_initialize_thread();
+
+	ev_init(&if_stats_timer, if_stats_timer_cb);
+	ev_timer_set(&if_stats_timer, 1.0, 2.0);
+	if_stats_timer.data = cfg;
+	ev_timer_start(cfg->loop, &if_stats_timer);
 
 	ev_run(cfg->loop, 0);
 
@@ -480,6 +666,7 @@ int main (int argc, char **argv)
 		interfaces[i].thread = NULL;
 		interfaces[i].promisc = 0;
 		interfaces[i].type = UINET_IFTYPE_NETMAP;
+		interfaces[i].do_tcpstats = (i == 0);
 	}
 
 	for (i = 0; i < MAX_SERVERS; i++) {
@@ -692,11 +879,14 @@ int main (int argc, char **argv)
 								    interface_thread_start, &interfaces[i]);
 	}
 
+<<<<<<< HEAD
 	error = pthread_create(&sysctl_thr, NULL, passive_sysctl_listener, NULL);
 	if (error != 0) {
 		printf("Failed to bring up sysctl thread: %d\n", errno);
 	}
 
+=======
+>>>>>>> 7c493ffa2b42b5f64b9d5923063a507d8e89a614
 	for (i = 0; i < num_interfaces; i++) {
 		if (0 == interfaces[i].thread_create_result)
 			pthread_join(interfaces[i].thread, NULL);
