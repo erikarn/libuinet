@@ -713,6 +713,7 @@ int main (int argc, char **argv)
 			} else {
 				interfaces[num_interfaces - 1].promisc = 1;
 			}
+			break;
 		case 'p':
 			if (0 == interface_server_count) {
 				printf("No listen address specified\n");
