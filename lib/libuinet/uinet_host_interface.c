@@ -90,8 +90,8 @@ typedef cpu_set_t cpuset_t;
 static struct itimerval prof_itimer;
 #endif /* UINET_PROFILE */
 
-static pthread_key_t curthread_key;
-
+static pthread_key_t thread_specific_data_key;
+static unsigned int uhi_num_cpus;
 
 void
 uhi_init(void)
@@ -108,15 +108,22 @@ uhi_init(void)
 	assert(UHI_POLLHUP == POLLHUP);
 	assert(UHI_POLLNVAL == POLLNVAL);
 	
-	error = pthread_key_create(&curthread_key, NULL);
+	error = pthread_key_create(&thread_specific_data_key, NULL);
 	if (error != 0)
-		printf("Warning: unable to create pthread key for curthread data (%d)\n", error);
+		printf("Warning: unable to create pthread key for thread specific data (%d)\n", error);
 
 #if defined(UINET_PROFILE)
 	printf("getting prof timer\n");
 	getitimer(ITIMER_PROF, &prof_itimer);
 #endif /* UINET_PROFILE */
 
+}
+
+
+void
+uhi_set_num_cpus(unsigned int n)
+{
+	uhi_num_cpus = n;
 }
 
 
@@ -325,7 +332,7 @@ void uhi_thread_bind(unsigned int cpu)
 }
 
 
-int uhi_thread_bound_cpu(unsigned int ncpus)
+int uhi_thread_bound_cpu()
 {
 #if defined(__APPLE__)
 	mach_port_t mach_thread = pthread_mach_thread_np(pthread_self());
@@ -345,7 +352,7 @@ int uhi_thread_bound_cpu(unsigned int ncpus)
 	 * of course, but we can detect if it's out of bounds and at least
 	 * treat that case as an unknown binding.
 	 */
-	if (bound_cpu >= ncpus)
+	if (bound_cpu >= uhi_num_cpus)
 		bound_cpu = -1;
 
 	return (bound_cpu);
@@ -361,7 +368,7 @@ int uhi_thread_bound_cpu(unsigned int ncpus)
 	 * all other cpuset contents, we treat the binding as unknown.
 	 */
 	bound_cpu = -1;
-	for (i = 0; i < ncpus; i++) {
+	for (i = 0; i < uhi_num_cpus; i++) {
 		if (CPU_ISSET(i, &cpuset)) {
 			if (-1 == bound_cpu) {
 				bound_cpu = i;
@@ -383,12 +390,13 @@ pthread_start_routine(void *arg)
 {
 	struct uhi_thread_start_args *tsa = arg;
 	int error;
+	int cpuid;
 
 #if defined(UINET_PROFILE)
 	setitimer(ITIMER_PROF, &prof_itimer, NULL);
 #endif /* UINET_PROFILE */
 
-	error = pthread_setspecific(curthread_key, tsa->thread_specific_data);
+	error = pthread_setspecific(thread_specific_data_key, tsa->thread_specific_data);
 	if (error != 0)
 		printf("Warning: unable to set thread-specific data (%d)\n", error);
 
@@ -403,6 +411,11 @@ pthread_start_routine(void *arg)
 		*tsa->host_thread_id = (uhi_thread_t)pthread_self();
 	}
 
+	if (tsa->oncpu) {
+		cpuid = uhi_thread_bound_cpu();
+		*(tsa->oncpu) = (cpuid == -1) ? 0 : cpuid;
+	}
+
 #if defined(__FreeBSD__)
 	pthread_set_name_np(pthread_self(), tsa->name);
 #elif defined(__linux__)
@@ -410,8 +423,8 @@ pthread_start_routine(void *arg)
 #endif
 
 	tsa->start_routine(tsa->start_routine_arg);
-	tsa->end_routine(tsa);
-	free(tsa->thread_specific_data);
+	if (tsa->end_routine != NULL)
+		tsa->end_routine(tsa);
 	free(tsa);
 
 	return (NULL);
@@ -448,18 +461,17 @@ uhi_thread_exit(void)
 	pthread_exit(NULL);
 }
 
-
 void *
 uhi_thread_get_thread_specific_data(void)
 {
-	return (pthread_getspecific(curthread_key));
+	return (pthread_getspecific(thread_specific_data_key));
 }
 
 
 int
 uhi_thread_set_thread_specific_data(void *data)
 {
-	return (pthread_setspecific(curthread_key, data));
+	return (pthread_setspecific(thread_specific_data_key, data));
 }
 
 
