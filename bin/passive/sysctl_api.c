@@ -56,11 +56,9 @@ struct u_sysctl_state_t {
 	char *wbuf;
 	size_t wbuf_len;
 	size_t sbuf_len;
-	const int *req_oid;
 	const char *sbuf;
 	int error;
 	size_t rval;
-	size_t req_oid_len;
 	char *oldp;
 
 	/*
@@ -324,6 +322,9 @@ passive_sysctl_handle_resp(struct u_sysctl_state_t *us)
 static int
 passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 {
+	const int *req_oid;
+	size_t req_oid_len;
+
 	/* Setup! */
 	passive_sysctl_state_init(us, ns);
 
@@ -342,14 +343,14 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 		us->retval = 0;
 		goto finish;
 	}
-	us->req_oid = (const int *) nvlist_get_binary(nvl, "sysctl_oid",
-	    &us->req_oid_len);
-	if (us->req_oid_len % sizeof(int) != 0) {
+	req_oid = (const int *) nvlist_get_binary(nvl, "sysctl_oid",
+	    &req_oid_len);
+	if (req_oid_len % sizeof(int) != 0) {
 #ifdef	UINET_SYSCTL_DEBUG
 		fprintf(stderr, "%s: fd %d: req_oid_len (%llu) is not a multiple of %d\n",
 		    __func__,
 		    ns,
-		    (unsigned long long) us->req_oid_len,
+		    (unsigned long long) req_oid_len,
 		    (int) sizeof(int));
 #endif
 		us->retval = 0;
@@ -366,7 +367,7 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 	    "%s: fd %d: sysctl oid oidlen=%d oldp=%p, oldplen=%d, newp=%p, newplen=%d\n",
 	    __func__,
 	    ns,
-	    (int) (us->req_oid_len / sizeof(int)),
+	    (int) (req_oid_len / sizeof(int)),
 	    us->wbuf,
 	    (int) us->wbuf_len,
 	    us->sbuf,
@@ -378,8 +379,8 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 	 * Pass in a NULL wbuf_len if wbuf is NULL.  sysctl writing
 	 * passes in a NULL buffer and NULL oidlenp.
 	 */
-	us->error = uinet_sysctl((int *) us->req_oid,
-	    us->req_oid_len / sizeof(int),
+	us->error = uinet_sysctl((int *) req_oid,
+	    req_oid_len / sizeof(int),
 	    us->oldp,
 	    us->oldp == NULL ? NULL : &us->wbuf_len,
 	    (char *) us->sbuf,
