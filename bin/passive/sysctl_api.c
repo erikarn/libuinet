@@ -95,19 +95,6 @@ passive_sysctl_state_clean(struct u_sysctl_state_t *us)
 }
 
 /*
- * Handle sysctl string type requests.
- *
- * Returns 1 if the connection should stay open; 0 if
- * not.
- */
-static int
-passive_sysctl_reqtype_str(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
-{
-
-	return (-1);
-}
-
-/*
  * Return 1 if things are ok, 0 if somehow things failed.
  */
 static int
@@ -308,6 +295,84 @@ passive_sysctl_handle_resp(struct u_sysctl_state_t *us)
 
 	/* Done! */
 	us->retval = 1;
+}
+
+/*
+ * Handle sysctl string type requests.
+ *
+ * Returns 1 if the connection should stay open; 0 if
+ * not.
+ */
+static int
+passive_sysctl_reqtype_str(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
+{
+	const char *req_str;
+
+	/* Setup! */
+	passive_sysctl_state_init(us, ns);
+
+	/* Parse initial bits */
+
+	/*
+	 * We absolutely require there to be a sysctl_str field.
+	 * Ensure it's here.
+	 */
+	if (! nvlist_exists_string(nvl, "sysctl_str")) {
+#ifdef	UINET_SYSCTL_DEBUG
+		fprintf(stderr, "%s: fd %d: missing sysctl_str\n",
+		    __func__,
+		    ns);
+#endif
+		us->retval = 0;
+		goto finish;
+	}
+	req_str = nvlist_get_string(nvl, "sysctl_str");
+
+	/* XXX enforce maximum string length */
+
+	/* parse shared bits */
+	if (! passive_sysctl_handle_req(us, nvl))
+		goto finish;
+
+	/* Issue sysctl */
+#ifdef	UINET_SYSCTL_DEBUG
+	fprintf(stderr,
+	    "%s: fd %d: sysctl str=%s, oldp=%p, oldplen=%d, newp=%p, newplen=%d\n",
+	    __func__,
+	    ns,
+	    req_str,
+	    us->wbuf,
+	    (int) us->wbuf_len,
+	    us->sbuf,
+	    (int) us->sbuf_len);
+#endif
+
+	/*
+	 * Pass in a NULL wbuf_len if wbuf is NULL.  sysctl writing
+	 * passes in a NULL buffer and NULL oidlenp.
+	 */
+	us->error = uinet_sysctlbyname((char *) req_str,
+	    us->oldp,
+	    us->oldp == NULL ? NULL : &us->wbuf_len,
+	    (char *) us->sbuf,
+	    us->sbuf_len,
+	    &us->rval,
+	    0);
+
+#ifdef	UINET_SYSCTL_DEBUG
+	fprintf(stderr, "%s: fd %d: sysctl error=%d, wbuf_len=%llu, rval=%llu\n",
+	    __func__,
+	    ns,
+	    (int) us->error,
+	    (unsigned long long) us->wbuf_len,
+	    (unsigned long long) us->rval);
+#endif
+
+	passive_sysctl_handle_resp(us);
+
+finish:
+	passive_sysctl_state_clean(us);
+	return (us->retval);
 }
 
 /*
