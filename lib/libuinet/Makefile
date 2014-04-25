@@ -2,7 +2,7 @@
 # Derived from FreeBSD auto-generated kernel Makefile and
 # machine-specific Makefile templates
 #
-DEBUG=-gdwarf-2 -O0
+DEBUG=-gdwarf-2 -O
 
 TOPDIR?=${CURDIR}/../..
 S=${TOPDIR}/sys

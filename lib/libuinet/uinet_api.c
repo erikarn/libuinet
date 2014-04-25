@@ -35,6 +35,7 @@
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/sockio.h>
+#include <sys/sysctl.h>
 #include <sys/uio.h>
 
 #include <net/if.h>
@@ -135,6 +136,10 @@ uinet_getifstat(const char *name, struct uinet_ifstat *stat)
 	stat->ifi_noproto    = ifp->if_data.ifi_noproto;
 	stat->ifi_hwassist   = ifp->if_data.ifi_hwassist;
 	stat->ifi_epoch      = ifp->if_data.ifi_epoch;
+	stat->ifi_icopies    = ifp->if_data.ifi_icopies;
+	stat->ifi_izcopies   = ifp->if_data.ifi_izcopies;
+	stat->ifi_ocopies    = ifp->if_data.ifi_ocopies;
+	stat->ifi_ozcopies   = ifp->if_data.ifi_ozcopies;
 
 	if_rele(ifp);
 
@@ -1189,6 +1194,28 @@ uinet_synfilter_install(struct uinet_socket *so, uinet_api_synfilter_callback_t 
 }
 
 
+int
+uinet_sysctlbyname(char *name, char *oldp, size_t *oldplen,
+    char *newp, size_t newplen, size_t *retval, int flags)
+{
+	int error;
+
+	error = kernel_sysctlbyname(curthread, name, oldp, oldplen,
+	    newp, newplen, retval, flags);
+	return (error);
+}
+
+
+int
+uinet_sysctl(int *name, u_int namelen, void *old, size_t *oldlenp,
+    void *new, size_t newlen, size_t *retval, int flags)
+{
+	int error;
+
+	error = kernel_sysctl(curthread, name, namelen, old, oldlenp,
+	    new, newlen, retval, flags);
+	return (error);
+}
 
 
 
