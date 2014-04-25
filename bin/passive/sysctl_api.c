@@ -49,6 +49,12 @@
 
 #define	UINET_SYSCTL_DEBUG
 
+#ifdef	UINET_SYSCTL_DEBUG
+#define	UINET_SYSCTL_DPRINTF(fmt, ...) fprintf(stderr, fmt, __VA_ARGS__)
+#else
+#define	UINET_SYSCTL_DPRINTF(fmt, ...)
+#endif
+
 struct u_sysctl_state_t {
 	nvlist_t *nvl_resp;
 
@@ -110,10 +116,8 @@ passive_sysctl_handle_req(struct u_sysctl_state_t *us, nvlist_t *nvl)
 		/* XXX strdup, then free as appropriate */
 		us->shm_path = nvlist_get_string(nvl, "sysctl_respbuf_shm_path");
 		if (! nvlist_exists_number(nvl, "sysctl_respbuf_shm_len")) {
-#ifdef	UINET_SYSCTL_DEBUG
-		fprintf(stderr, "%s: shm_path provided but not shm_len\n",
-		    __func__);
-#endif
+			UINET_SYSCTL_DPRINTF("%s: shm_path provided but not shm_len\n",
+			    __func__);
 			us->retval = 0;
 			return (0);
 		}
@@ -123,11 +127,8 @@ passive_sysctl_handle_req(struct u_sysctl_state_t *us, nvlist_t *nvl)
 		 * a respbuf_len field.
 		 */
 		if (! nvlist_exists_number(nvl, "sysctl_respbuf_len")) {
-#ifdef	UINET_SYSCTL_DEBUG
-			fprintf(stderr,
-			    "%s: shm_path provided but no shm_respbuf_len!\n",
+			UINET_SYSCTL_DPRINTF("%s: shm_path provided but no shm_respbuf_len!\n",
 			    __func__);
-#endif
 			us->retval = 0;
 			return (0);
 		}
@@ -167,14 +168,12 @@ passive_sysctl_handle_req(struct u_sysctl_state_t *us, nvlist_t *nvl)
 		 */
 		if (us->shm_mem == NULL && nvlist_get_number(nvl,
 		    "sysctl_respbuf_len") > U_SYSCTL_MAX_REQ_BUF_LEN) {
-#ifdef	UINET_SYSCTL_DEBUG
-			fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is "
+			UINET_SYSCTL_DPRINTF("%s: fd %d: sysctl_respbuf_len is "
 			    "too big! (%llu)\n",
 			    __func__,
 			    us->ns,
 			    (unsigned long long) nvlist_get_number(nvl,
 			      "sysctl_respbuf_len"));
-#endif
 			us->retval = 0;
 			return (0);
 		}
@@ -188,13 +187,11 @@ passive_sysctl_handle_req(struct u_sysctl_state_t *us, nvlist_t *nvl)
 	 */
 	if (us->shm_mem != NULL) {
 		if (us->wbuf_len > us->shm_len) {
-#ifdef	UINET_SYSCTL_DEBUG
-			fprintf(stderr, "%s: fd %d: respbuf_len %lld > shm_len %lld\n",
+			UINET_SYSCTL_DPRINTF("%s: fd %d: respbuf_len %lld > shm_len %lld\n",
 			    __func__,
 			    us->ns,
 			    (long long) us->wbuf_len,
 			    (long long) us->shm_len);
-#endif
 			us->retval = 0;
 			return (0);
 		}
@@ -219,9 +216,9 @@ passive_sysctl_handle_req(struct u_sysctl_state_t *us, nvlist_t *nvl)
 	} else {
 		us->wbuf = calloc(1, us->wbuf_len);
 		if (us->wbuf == NULL) {
-#ifdef	UINET_SYSCTL_DEBUG
-			fprintf(stderr, "%s: fd %d: malloc failed\n", __func__, us->ns);
-#endif
+			UINET_SYSCTL_DPRINTF("%s: fd %d: malloc failed\n",
+			    __func__,
+			    us->ns);
 			us->retval = 0;
 			return (0);
 		}
@@ -257,13 +254,11 @@ passive_sysctl_handle_resp(struct u_sysctl_state_t *us)
 	 * client.
 	 */
 	if (us->wbuf != NULL && us->error == 0 && us->rval >= us->wbuf_len) {
-#ifdef	UINET_SYSCTL_DEBUG
-		fprintf(stderr, "%s: fd %d: rval (%llu) > wbuf_len (%llu)\n",
+		UINET_SYSCTL_DPRINTF("%s: fd %d: rval (%llu) > wbuf_len (%llu)\n",
 		    __func__,
 		    us->ns,
 		    (unsigned long long) us->rval,
 		    (unsigned long long) us->wbuf_len);
-#endif
 		us->retval = 0;
 		return;
 	}
@@ -318,11 +313,9 @@ passive_sysctl_reqtype_str(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 	 * Ensure it's here.
 	 */
 	if (! nvlist_exists_string(nvl, "sysctl_str")) {
-#ifdef	UINET_SYSCTL_DEBUG
-		fprintf(stderr, "%s: fd %d: missing sysctl_str\n",
+		UINET_SYSCTL_DPRINTF("%s: fd %d: missing sysctl_str\n",
 		    __func__,
 		    ns);
-#endif
 		us->retval = 0;
 		goto finish;
 	}
@@ -335,9 +328,8 @@ passive_sysctl_reqtype_str(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 		goto finish;
 
 	/* Issue sysctl */
-#ifdef	UINET_SYSCTL_DEBUG
-	fprintf(stderr,
-	    "%s: fd %d: sysctl str=%s, oldp=%p, oldplen=%d, newp=%p, newplen=%d\n",
+	UINET_SYSCTL_DPRINTF("%s: fd %d: sysctl str=%s, oldp=%p, "
+	    "oldplen=%d, newp=%p, newplen=%d\n",
 	    __func__,
 	    ns,
 	    req_str,
@@ -345,7 +337,6 @@ passive_sysctl_reqtype_str(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 	    (int) us->wbuf_len,
 	    us->sbuf,
 	    (int) us->sbuf_len);
-#endif
 
 	/*
 	 * Pass in a NULL wbuf_len if wbuf is NULL.  sysctl writing
@@ -359,14 +350,13 @@ passive_sysctl_reqtype_str(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 	    &us->rval,
 	    0);
 
-#ifdef	UINET_SYSCTL_DEBUG
-	fprintf(stderr, "%s: fd %d: sysctl error=%d, wbuf_len=%llu, rval=%llu\n",
+	UINET_SYSCTL_DPRINTF("%s: fd %d: sysctl error=%d, wbuf_len=%llu, "
+	    "rval=%llu\n",
 	    __func__,
 	    ns,
 	    (int) us->error,
 	    (unsigned long long) us->wbuf_len,
 	    (unsigned long long) us->rval);
-#endif
 
 	passive_sysctl_handle_resp(us);
 
@@ -400,24 +390,21 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 	 * Ensure it's here.
 	 */
 	if (! nvlist_exists_binary(nvl, "sysctl_oid")) {
-#ifdef	UINET_SYSCTL_DEBUG
-		fprintf(stderr, "%s: fd %d: missing sysctl_oid\n",
+		UINET_SYSCTL_DPRINTF("%s: fd %d: missing sysctl_oid\n",
 		    __func__,
 		    ns);
-#endif
 		us->retval = 0;
 		goto finish;
 	}
 	req_oid = (const int *) nvlist_get_binary(nvl, "sysctl_oid",
 	    &req_oid_len);
 	if (req_oid_len % sizeof(int) != 0) {
-#ifdef	UINET_SYSCTL_DEBUG
-		fprintf(stderr, "%s: fd %d: req_oid_len (%llu) is not a multiple of %d\n",
+		UINET_SYSCTL_DPRINTF("%s: fd %d: req_oid_len (%llu) "
+		    "is not a multiple of %d\n",
 		    __func__,
 		    ns,
 		    (unsigned long long) req_oid_len,
 		    (int) sizeof(int));
-#endif
 		us->retval = 0;
 		goto finish;
 	}
@@ -427,9 +414,8 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 		goto finish;
 
 	/* Issue sysctl */
-#ifdef	UINET_SYSCTL_DEBUG
-	fprintf(stderr,
-	    "%s: fd %d: sysctl oid oidlen=%d oldp=%p, oldplen=%d, newp=%p, newplen=%d\n",
+	UINET_SYSCTL_DPRINTF("%s: fd %d: sysctl oid oidlen=%d oldp=%p, "
+	    "oldplen=%d, newp=%p, newplen=%d\n",
 	    __func__,
 	    ns,
 	    (int) (req_oid_len / sizeof(int)),
@@ -437,7 +423,6 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 	    (int) us->wbuf_len,
 	    us->sbuf,
 	    (int) us->sbuf_len);
-#endif
 
 	/* XXX typecasting sbuf and req_oid sucks */
 	/*
@@ -453,14 +438,13 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 	    &us->rval,
 	    0);
 
-#ifdef	UINET_SYSCTL_DEBUG
-	fprintf(stderr, "%s: fd %d: sysctl error=%d, wbuf_len=%llu, rval=%llu\n",
+	UINET_SYSCTL_DPRINTF("%s: fd %d: sysctl error=%d, "
+	    "wbuf_len=%llu, rval=%llu\n",
 	    __func__,
 	    ns,
 	    (int) us->error,
 	    (unsigned long long) us->wbuf_len,
 	    (unsigned long long) us->rval);
-#endif
 
 	passive_sysctl_handle_resp(us);
 
@@ -535,12 +519,10 @@ passive_sysctl_listener(void *arg)
 			}
 			type = nvlist_get_string(nvl, "type");
 
-#ifdef	UINET_SYSCTL_DEBUG
-			fprintf(stderr, "%s: fd %d: type=%s\n",
+			UINET_SYSCTL_DPRINTF("%s: fd %d: type=%s\n",
 			    __func__,
 			    ns,
 			    type);
-#endif
 
 			/* Dispatch as appropriate */
 			bzero(&us, sizeof(us));
