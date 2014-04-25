@@ -55,6 +55,29 @@
 
 #define	UINET_SYSCTL_DEBUG
 
+struct u_sysctl_state_t {
+	nvlist_t *nvl_resp;
+
+	char *wbuf;
+	size_t wbuf_len;
+	size_t sbuf_len;
+	const int *req_oid;
+	const char *sbuf;
+	int error;
+	size_t rval;
+	size_t req_oid_len;
+	char *oldp;
+
+	/*
+	 * This is the posix shm state
+	 */
+	int shm_fd;
+	char *shm_mem;
+	size_t shm_len;
+	const char *shm_path;
+	int retval;
+};
+
 /*
  * Handle sysctl string type requests.
  *
@@ -62,134 +85,9 @@
  * not.
  */
 static int
-passive_sysctl_reqtype_str(int ns, nvlist_t *nvl)
+passive_sysctl_reqtype_str(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 {
-#if 0
-	struct sysctl_req_hdr *hdr;
-	nvlist_t *nvl_resp = NULL;
-	int retval = 0;
-	char *wbuf = NULL;
-	size_t wbuf_len = 0;
-	size_t sbuf_len = 0;
-	char *req_str = NULL;
-	const char *sbuf;
-	int error;
-	size_t rval = 0;
 
-	/* Validate fields are here */
-	if (! nvlist_exists_string(nvl, "sysctl_str")) {
-		fprintf(stderr, "%s: fd %d: missing sysctl_str\n",
-		    __func__,
-		    ns);
-		retval = 0;
-		goto finish;
-	}
-	req_str = strdup(nvlist_get_string(nvl, "sysctl_str"));
-
-	/* sysctl_respbuf_len */
-	if (! nvlist_exists_number(nvl, "sysctl_respbuf_len")) {
-		fprintf(stderr, "%s: fd %d: missing sysctl_respbuf_len\n",
-		    __func__,
-		    ns);
-		retval = 0;
-		goto finish;
-	}
-	if (nvlist_get_number(nvl, "sysctl_respbuf_len") > SYSCTL_MAX_REQ_BUF_LEN) {
-		fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is too big (%llu)!\n",
-		    __func__,
-		    ns,
-		    (unsigned long long) nvlist_get_number(nvl, "sysctl_respbuf_len"));
-		retval = 0;
-		goto finish;
-	}
-	wbuf_len = nvlist_get_number(nvl, "sysctl_respbuf_len");
-	wbuf = calloc(1, wbuf_len);
-	if (wbuf == NULL) {
-		fprintf(stderr, "%s: fd %d: malloc failed\n", __func__, ns);
-		retval = 0;
-		goto finish;
-	}
-
-	/* sysctl_reqbuf */
-	if (nvlist_exists_binary(nvl, "sysctl_reqbuf")) {
-		sbuf = nvlist_get_binary(nvl, "sysctl_reqbuf", &sbuf_len);
-	} else {
-		sbuf = NULL;
-		sbuf_len = 0;
-	}
-
-	/* Issue sysctl */
-	fprintf(stderr,
-	    "%s: fd %d: sysctl '%s' src_len=%d, dst_len=%d\n",
-	    __func__,
-	    ns,
-	    req_str,
-	    (int) sbuf_len,
-	    (int) wbuf_len);
-
-	/* XXX typecasting sbuf sucks */
-	error = uinet_sysctlbyname(req_str,
-	    wbuf, &wbuf_len,
-	    (char *) sbuf, sbuf_len,
-	    &rval,
-	    0);
-
-	fprintf(stderr, "%s: fd %d: sysctl error=%d, wbuf_len=%llu, rval=%llu\n",
-	    __func__,
-	    ns,
-	    (int) error,
-	    (unsigned long long) wbuf_len,
-	    (unsigned long long) rval);
-
-	/*
-	 * XXX Validate the response back from uinet_sysctl()
-	 * is within bounds for the response back to the
-	 * client.
-	 */
-	if (error == 0 && rval >= wbuf_len) {
-		fprintf(stderr, "%s: fd %d: rval (%llu) > wbuf_len (%llu)\n",
-		    __func__,
-		    ns,
-		    (unsigned long long) rval,
-		    (unsigned long long) wbuf_len);
-		retval = 0;
-		goto finish;
-	}
-
-	/* Construct our response */
-	nvl_resp = nvlist_create(0);
-	if (nvl_resp == NULL) {
-		fprintf(stderr, "%s: fd %d: nvlist_create failed\n", __func__, ns);
-		retval = 0;
-		goto finish;
-	}
-
-	nvlist_add_number(nvl_resp, "sysctl_errno", error);
-	if (error == 0) {
-		nvlist_add_binary(nvl_resp, "sysctl_respbuf", wbuf, rval);
-	}
-
-	if (nvlist_send(ns, nvl_resp) < 0) {
-		fprintf(stderr, "%s: fd %d: nvlist_send failed; errno=%d\n",
-		    __func__,
-		    ns,
-		    errno);
-		retval = 1;
-		goto finish;
-	}
-
-	/* Done! */
-	retval = 1;
-
-finish:
-	if (req_str != NULL)
-		free(req_str);
-	if (wbuf != NULL)
-		free(wbuf);
-	if (nvl_resp != NULL)
-		nvlist_destroy(nvl_resp);
-	return (retval);
-#endif
 	return (-1);
 }
 
@@ -203,28 +101,11 @@ finish:
  * I'm just passing in sysctl_oid as a binary array. Ew.
  */
 static int
-passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
+passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 {
-	struct sysctl_req_hdr *hdr;
-	nvlist_t *nvl_resp = NULL;
-	int retval = 0;
-	char *wbuf = NULL;
-	size_t wbuf_len = 0;
-	size_t sbuf_len = 0;
-	const int *req_oid = NULL;
-	const char *sbuf;
-	int error;
-	size_t rval = 0;
-	size_t req_oid_len;
-	char *oldp = NULL;
-
-	/*
-	 * This is the posix shm state
-	 */
-	int shm_fd = -1;
-	char *shm_mem = NULL;
-	size_t shm_len = 0;
-	const char *shm_path;
+	/* Initial state */
+	us->shm_fd = -1;
+	us->retval = 0;
 
 	/*
 	 * We absolutely require there to be a sysctl_oid field.
@@ -236,20 +117,20 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 		    __func__,
 		    ns);
 #endif
-		retval = 0;
+		us->retval = 0;
 		goto finish;
 	}
-	req_oid = (const int *) nvlist_get_binary(nvl, "sysctl_oid",
-	    &req_oid_len);
-	if (req_oid_len % sizeof(int) != 0) {
+	us->req_oid = (const int *) nvlist_get_binary(nvl, "sysctl_oid",
+	    &us->req_oid_len);
+	if (us->req_oid_len % sizeof(int) != 0) {
 #ifdef	UINET_SYSCTL_DEBUG
 		fprintf(stderr, "%s: fd %d: req_oid_len (%llu) is not a multiple of %d\n",
 		    __func__,
 		    ns,
-		    (unsigned long long) req_oid_len,
+		    (unsigned long long) us->req_oid_len,
 		    (int) sizeof(int));
 #endif
-		retval = 0;
+		us->retval = 0;
 		goto finish;
 	}
 
@@ -259,13 +140,14 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	 * XXX Validate that it is indeed a valid path somehow?
 	 */
 	if (nvlist_exists_string(nvl, "sysctl_respbuf_shm_path")) {
-		shm_path = nvlist_get_string(nvl, "sysctl_respbuf_shm_path");
+		/* XXX strdup, then free as appropriate */
+		us->shm_path = nvlist_get_string(nvl, "sysctl_respbuf_shm_path");
 		if (! nvlist_exists_number(nvl, "sysctl_respbuf_shm_len")) {
 #ifdef	UINET_SYSCTL_DEBUG
 		fprintf(stderr, "%s: shm_path provided but not shm_len\n",
 		    __func__);
 #endif
-			retval = 0;
+			us->retval = 0;
 			goto finish;
 		}
 
@@ -279,28 +161,28 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 			    "%s: shm_path provided but no shm_respbuf_len!\n",
 			    __func__);
 #endif
-			retval = 0;
+			us->retval = 0;
 			goto finish;
 		}
 
-		shm_len = nvlist_get_number(nvl, "sysctl_respbuf_shm_len");
+		us->shm_len = nvlist_get_number(nvl, "sysctl_respbuf_shm_len");
 
-		shm_fd = shm_open(shm_path, O_RDWR, 0644);
-		if (shm_fd < 0) {
+		us->shm_fd = shm_open(us->shm_path, O_RDWR, 0644);
+		if (us->shm_fd < 0) {
 #ifdef	UINET_SYSCTL_DEBUG
-			warn("%s: shm_open (%s)", __func__, shm_path);
+			warn("%s: shm_open (%s)", __func__, us->shm_path);
 #endif
-			retval = 0;
+			us->retval = 0;
 			goto finish;
 		}
 
 		/* mmap it */
-		shm_mem = mmap(NULL, shm_len, PROT_READ, 0, shm_fd, 0);
-		if (shm_mem == NULL) {
+		us->shm_mem = mmap(NULL, us->shm_len, PROT_READ, 0, us->shm_fd, 0);
+		if (us->shm_mem == NULL) {
 #ifdef	UINET_SYSCTL_DEBUG
-			warn("%s: mmap (%s)", __func__, shm_path);
+			warn("%s: mmap (%s)", __func__, us->shm_path);
 #endif
-			retval = 0;
+			us->retval = 0;
 			goto finish;
 		}
 	}
@@ -316,7 +198,7 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 		 * We enforce a maximum size requirement on non-SHM
 		 * requests.
 		 */
-		if (shm_mem == NULL && nvlist_get_number(nvl,
+		if (us->shm_mem == NULL && nvlist_get_number(nvl,
 		    "sysctl_respbuf_len") > U_SYSCTL_MAX_REQ_BUF_LEN) {
 #ifdef	UINET_SYSCTL_DEBUG
 			fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is "
@@ -326,27 +208,27 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 			    (unsigned long long) nvlist_get_number(nvl,
 			      "sysctl_respbuf_len"));
 #endif
-			retval = 0;
+			us->retval = 0;
 			goto finish;
 		}
-		wbuf_len = nvlist_get_number(nvl, "sysctl_respbuf_len");
+		us->wbuf_len = nvlist_get_number(nvl, "sysctl_respbuf_len");
 	} else {
-		wbuf_len = 0;
+		us->wbuf_len = 0;
 	}
 
 	/*
 	 * If we have a shm, ensure respbuf_len <= shm_len.
 	 */
-	if (shm_mem != NULL) {
-		if (wbuf_len > shm_len) {
+	if (us->shm_mem != NULL) {
+		if (us->wbuf_len > us->shm_len) {
 #ifdef	UINET_SYSCTL_DEBUG
-			fprintf(stderr, "%s: fd %d: respbuf_len %d > shm_len %d\n",
+			fprintf(stderr, "%s: fd %d: respbuf_len %lld > shm_len %lld\n",
 			    __func__,
 			    ns,
-			    (int) wbuf_len,
-			    (int) shm_len);
+			    (long long) us->wbuf_len,
+			    (long long) us->shm_len);
 #endif
-			retval = 0;
+			us->retval = 0;
 			goto finish;
 		}
 	}
@@ -360,31 +242,31 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	 */
 
 	/* If wbuf_len is 0, then pass in a NULL wbuf */
-	if (shm_mem != NULL) {
-		wbuf = NULL;
-		oldp = shm_mem;
+	if (us->shm_mem != NULL) {
+		us->wbuf = NULL;
+		us->oldp = us->shm_mem;
 	}
-	if (wbuf_len == 0) {
-		wbuf = NULL;
-		oldp = NULL;
+	if (us->wbuf_len == 0) {
+		us->wbuf = NULL;
+		us->oldp = NULL;
 	} else {
-		wbuf = calloc(1, wbuf_len);
-		if (wbuf == NULL) {
+		us->wbuf = calloc(1, us->wbuf_len);
+		if (us->wbuf == NULL) {
 #ifdef	UINET_SYSCTL_DEBUG
 			fprintf(stderr, "%s: fd %d: malloc failed\n", __func__, ns);
 #endif
-			retval = 0;
+			us->retval = 0;
 			goto finish;
 		}
-		oldp = wbuf;
+		us->oldp = us->wbuf;
 	}
 
 	/* sysctl_reqbuf */
 	if (nvlist_exists_binary(nvl, "sysctl_reqbuf")) {
-		sbuf = nvlist_get_binary(nvl, "sysctl_reqbuf", &sbuf_len);
+		us->sbuf = nvlist_get_binary(nvl, "sysctl_reqbuf", &us->sbuf_len);
 	} else {
-		sbuf = NULL;
-		sbuf_len = 0;
+		us->sbuf = NULL;
+		us->sbuf_len = 0;
 	}
 
 	/* Issue sysctl */
@@ -393,11 +275,11 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	    "%s: fd %d: sysctl oid oidlen=%d oldp=%p, oldplen=%d, newp=%p, newplen=%d\n",
 	    __func__,
 	    ns,
-	    (int) (req_oid_len / sizeof(int)),
-	    wbuf,
-	    (int) wbuf_len,
-	    sbuf,
-	    (int) sbuf_len);
+	    (int) (us->req_oid_len / sizeof(int)),
+	    us->wbuf,
+	    (int) us->wbuf_len,
+	    us->sbuf,
+	    (int) us->sbuf_len);
 #endif
 
 	/* XXX typecasting sbuf and req_oid sucks */
@@ -405,20 +287,22 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	 * Pass in a NULL wbuf_len if wbuf is NULL.  sysctl writing
 	 * passes in a NULL buffer and NULL oidlenp.
 	 */
-	error = uinet_sysctl((int *) req_oid, req_oid_len / sizeof(int),
-	    oldp,
-	    oldp == NULL ? NULL : &wbuf_len,
-	    (char *) sbuf, sbuf_len,
-	    &rval,
+	us->error = uinet_sysctl((int *) us->req_oid,
+	    us->req_oid_len / sizeof(int),
+	    us->oldp,
+	    us->oldp == NULL ? NULL : &us->wbuf_len,
+	    (char *) us->sbuf,
+	    us->sbuf_len,
+	    &us->rval,
 	    0);
 
 #ifdef	UINET_SYSCTL_DEBUG
 	fprintf(stderr, "%s: fd %d: sysctl error=%d, wbuf_len=%llu, rval=%llu\n",
 	    __func__,
 	    ns,
-	    (int) error,
-	    (unsigned long long) wbuf_len,
-	    (unsigned long long) rval);
+	    (int) us->error,
+	    (unsigned long long) us->wbuf_len,
+	    (unsigned long long) us->rval);
 #endif
 
 	/*
@@ -433,56 +317,56 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl)
 	 * is within bounds for the response back to the
 	 * client.
 	 */
-	if (wbuf != NULL && error == 0 && rval >= wbuf_len) {
+	if (us->wbuf != NULL && us->error == 0 && us->rval >= us->wbuf_len) {
 #ifdef	UINET_SYSCTL_DEBUG
 		fprintf(stderr, "%s: fd %d: rval (%llu) > wbuf_len (%llu)\n",
 		    __func__,
 		    ns,
-		    (unsigned long long) rval,
-		    (unsigned long long) wbuf_len);
+		    (unsigned long long) us->rval,
+		    (unsigned long long) us->wbuf_len);
 #endif
-		retval = 0;
+		us->retval = 0;
 		goto finish;
 	}
 
 	/* Construct our response */
-	nvl_resp = nvlist_create(0);
-	if (nvl_resp == NULL) {
+	us->nvl_resp = nvlist_create(0);
+	if (us->nvl_resp == NULL) {
 		fprintf(stderr, "%s: fd %d: nvlist_create failed\n", __func__, ns);
-		retval = 0;
+		us->retval = 0;
 		goto finish;
 	}
 
-	nvlist_add_number(nvl_resp, "sysctl_errno", error);
+	nvlist_add_number(us->nvl_resp, "sysctl_errno", us->error);
 
 	/* wbuf is NULL if we have a shm response */
-	if (error == 0 && wbuf != NULL) {
-		nvlist_add_binary(nvl_resp, "sysctl_respbuf", wbuf, rval);
+	if (us->error == 0 && us->wbuf != NULL) {
+		nvlist_add_binary(us->nvl_resp, "sysctl_respbuf", us->wbuf, us->rval);
 	}
-	nvlist_add_number(nvl_resp, "sysctl_respbuf_len", rval);
+	nvlist_add_number(us->nvl_resp, "sysctl_respbuf_len", us->rval);
 
-	if (nvlist_send(ns, nvl_resp) < 0) {
+	if (nvlist_send(ns, us->nvl_resp) < 0) {
 		fprintf(stderr, "%s: fd %d: nvlist_send failed; errno=%d\n",
 		    __func__,
 		    ns,
 		    errno);
-		retval = 1;
+		us->retval = 1;
 		goto finish;
 	}
 
 	/* Done! */
-	retval = 1;
+	us->retval = 1;
 
 finish:
-	if (wbuf != NULL)
-		free(wbuf);
-	if (shm_mem != NULL)
-		munmap(shm_mem, shm_len);
-	if (shm_fd != -1)
-		close(shm_fd);
-	if (nvl_resp != NULL)
-		nvlist_destroy(nvl_resp);
-	return (retval);
+	if (us->wbuf != NULL)
+		free(us->wbuf);
+	if (us->shm_mem != NULL)
+		munmap(us->shm_mem, us->shm_len);
+	if (us->shm_fd != -1)
+		close(us->shm_fd);
+	if (us->nvl_resp != NULL)
+		nvlist_destroy(us->nvl_resp);
+	return (us->retval);
 }
 
 void *
@@ -537,6 +421,8 @@ passive_sysctl_listener(void *arg)
 		}
 
 		for (;;) {
+			struct u_sysctl_state_t us;
+
 			nvl = nvlist_recv(ns);
 			if (nvl == NULL)
 				break;
@@ -557,10 +443,11 @@ passive_sysctl_listener(void *arg)
 #endif
 
 			/* Dispatch as appropriate */
+			bzero(&us, sizeof(us));
 			if (strncmp(type, "sysctl_str", 10) == 0) {
-				ret = passive_sysctl_reqtype_str(ns, nvl);
+				ret = passive_sysctl_reqtype_str(ns, nvl, &us);
 			} else if (strncmp(type, "sysctl_oid", 10) == 0) {
-				ret = passive_sysctl_reqtype_oid(ns, nvl);
+				ret = passive_sysctl_reqtype_oid(ns, nvl, &us);
 			} else {
 				fprintf(stderr, "%s: fd %d: unknown type=%s\n",
 				    __func__,
