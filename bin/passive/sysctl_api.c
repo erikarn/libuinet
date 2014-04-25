@@ -47,12 +47,6 @@
 #include "nv.h"
 #include "sysctl_api.h"
 
-#if 0
-#define	SYSCTL_BUF_LEN		131072
-#define	SYSCTL_MAX_BUF_LEN	1048576
-#define	SYSCTL_MAX_STR_LEN	1024
-#endif
-
 #define	UINET_SYSCTL_DEBUG
 
 struct u_sysctl_state_t {
