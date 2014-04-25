@@ -58,6 +58,7 @@
 struct u_sysctl_state_t {
 	nvlist_t *nvl_resp;
 
+	int ns;
 	char *wbuf;
 	size_t wbuf_len;
 	size_t sbuf_len;
@@ -78,6 +79,29 @@ struct u_sysctl_state_t {
 	int retval;
 };
 
+static void
+passive_sysctl_state_init(struct u_sysctl_state_t *us, int ns)
+{
+	bzero(us, sizeof(*us));
+
+	us->shm_fd = -1;
+	us->ns = ns;
+}
+
+static void
+passive_sysctl_state_clean(struct u_sysctl_state_t *us)
+{
+
+	if (us->wbuf != NULL)
+		free(us->wbuf);
+	if (us->shm_mem != NULL)
+		munmap(us->shm_mem, us->shm_len);
+	if (us->shm_fd != -1)
+		close(us->shm_fd);
+	if (us->nvl_resp != NULL)
+		nvlist_destroy(us->nvl_resp);
+}
+
 /*
  * Handle sysctl string type requests.
  *
@@ -89,6 +113,63 @@ passive_sysctl_reqtype_str(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 {
 
 	return (-1);
+}
+
+static void
+passive_sysctl_handle_resp(struct u_sysctl_state_t *us)
+{
+
+	/*
+	 * We only copy the data back if wbuf is not NULL.
+	 *
+	 * The undocumented size lookup in sysctl is done by
+	 * doing a sysctl fetch on the given OID but with oldplen=0 and
+	 * oldp=NULL, oldplen gets updated with the storage size.
+	 */
+	/*
+	 * XXX Validate the response back from uinet_sysctl()
+	 * is within bounds for the response back to the
+	 * client.
+	 */
+	if (us->wbuf != NULL && us->error == 0 && us->rval >= us->wbuf_len) {
+#ifdef	UINET_SYSCTL_DEBUG
+		fprintf(stderr, "%s: fd %d: rval (%llu) > wbuf_len (%llu)\n",
+		    __func__,
+		    us->ns,
+		    (unsigned long long) us->rval,
+		    (unsigned long long) us->wbuf_len);
+#endif
+		us->retval = 0;
+		return;
+	}
+
+	/* Construct our response */
+	us->nvl_resp = nvlist_create(0);
+	if (us->nvl_resp == NULL) {
+		fprintf(stderr, "%s: fd %d: nvlist_create failed\n", __func__, us->ns);
+		us->retval = 0;
+		return;
+	}
+
+	nvlist_add_number(us->nvl_resp, "sysctl_errno", us->error);
+
+	/* wbuf is NULL if we have a shm response */
+	if (us->error == 0 && us->wbuf != NULL) {
+		nvlist_add_binary(us->nvl_resp, "sysctl_respbuf", us->wbuf, us->rval);
+	}
+	nvlist_add_number(us->nvl_resp, "sysctl_respbuf_len", us->rval);
+
+	if (nvlist_send(us->ns, us->nvl_resp) < 0) {
+		fprintf(stderr, "%s: fd %d: nvlist_send failed; errno=%d\n",
+		    __func__,
+		    us->ns,
+		    errno);
+		us->retval = 0;
+		return;
+	}
+
+	/* Done! */
+	us->retval = 1;
 }
 
 /*
@@ -103,9 +184,8 @@ passive_sysctl_reqtype_str(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 static int
 passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 {
-	/* Initial state */
-	us->shm_fd = -1;
-	us->retval = 0;
+	/* Setup! */
+	passive_sysctl_state_init(us, ns);
 
 	/*
 	 * We absolutely require there to be a sysctl_oid field.
@@ -305,67 +385,10 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 	    (unsigned long long) us->rval);
 #endif
 
-	/*
-	 * We only copy the data back if wbuf is not NULL.
-	 *
-	 * The undocumented size lookup in sysctl is done by
-	 * doing a sysctl fetch on the given OID but with oldplen=0 and
-	 * oldp=NULL, oldplen gets updated with the storage size.
-	 */
-	/*
-	 * XXX Validate the response back from uinet_sysctl()
-	 * is within bounds for the response back to the
-	 * client.
-	 */
-	if (us->wbuf != NULL && us->error == 0 && us->rval >= us->wbuf_len) {
-#ifdef	UINET_SYSCTL_DEBUG
-		fprintf(stderr, "%s: fd %d: rval (%llu) > wbuf_len (%llu)\n",
-		    __func__,
-		    ns,
-		    (unsigned long long) us->rval,
-		    (unsigned long long) us->wbuf_len);
-#endif
-		us->retval = 0;
-		goto finish;
-	}
-
-	/* Construct our response */
-	us->nvl_resp = nvlist_create(0);
-	if (us->nvl_resp == NULL) {
-		fprintf(stderr, "%s: fd %d: nvlist_create failed\n", __func__, ns);
-		us->retval = 0;
-		goto finish;
-	}
-
-	nvlist_add_number(us->nvl_resp, "sysctl_errno", us->error);
-
-	/* wbuf is NULL if we have a shm response */
-	if (us->error == 0 && us->wbuf != NULL) {
-		nvlist_add_binary(us->nvl_resp, "sysctl_respbuf", us->wbuf, us->rval);
-	}
-	nvlist_add_number(us->nvl_resp, "sysctl_respbuf_len", us->rval);
-
-	if (nvlist_send(ns, us->nvl_resp) < 0) {
-		fprintf(stderr, "%s: fd %d: nvlist_send failed; errno=%d\n",
-		    __func__,
-		    ns,
-		    errno);
-		us->retval = 1;
-		goto finish;
-	}
-
-	/* Done! */
-	us->retval = 1;
+	passive_sysctl_handle_resp(us);
 
 finish:
-	if (us->wbuf != NULL)
-		free(us->wbuf);
-	if (us->shm_mem != NULL)
-		munmap(us->shm_mem, us->shm_len);
-	if (us->shm_fd != -1)
-		close(us->shm_fd);
-	if (us->nvl_resp != NULL)
-		nvlist_destroy(us->nvl_resp);
+	passive_sysctl_state_clean(us);
 	return (us->retval);
 }
 
