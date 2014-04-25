@@ -109,6 +109,152 @@ passive_sysctl_reqtype_str(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 	return (-1);
 }
 
+/*
+ * Return 1 if things are ok, 0 if somehow things failed.
+ */
+static int
+passive_sysctl_handle_req(struct u_sysctl_state_t *us, nvlist_t *nvl)
+{
+
+	/*
+	 * If the shm stuff is provided, grab it.
+	 *
+	 * XXX Validate that it is indeed a valid path somehow?
+	 */
+	if (nvlist_exists_string(nvl, "sysctl_respbuf_shm_path")) {
+		/* XXX strdup, then free as appropriate */
+		us->shm_path = nvlist_get_string(nvl, "sysctl_respbuf_shm_path");
+		if (! nvlist_exists_number(nvl, "sysctl_respbuf_shm_len")) {
+#ifdef	UINET_SYSCTL_DEBUG
+		fprintf(stderr, "%s: shm_path provided but not shm_len\n",
+		    __func__);
+#endif
+			us->retval = 0;
+			return (0);
+		}
+
+		/*
+		 * If we have an shm_path, then we absolutely require
+		 * a respbuf_len field.
+		 */
+		if (! nvlist_exists_number(nvl, "sysctl_respbuf_len")) {
+#ifdef	UINET_SYSCTL_DEBUG
+			fprintf(stderr,
+			    "%s: shm_path provided but no shm_respbuf_len!\n",
+			    __func__);
+#endif
+			us->retval = 0;
+			return (0);
+		}
+
+		us->shm_len = nvlist_get_number(nvl, "sysctl_respbuf_shm_len");
+
+		us->shm_fd = shm_open(us->shm_path, O_RDWR, 0644);
+		if (us->shm_fd < 0) {
+#ifdef	UINET_SYSCTL_DEBUG
+			warn("%s: shm_open (%s)", __func__, us->shm_path);
+#endif
+			us->retval = 0;
+			return (0);
+		}
+
+		/* mmap it */
+		us->shm_mem = mmap(NULL, us->shm_len, PROT_READ, 0, us->shm_fd, 0);
+		if (us->shm_mem == NULL) {
+#ifdef	UINET_SYSCTL_DEBUG
+			warn("%s: mmap (%s)", __func__, us->shm_path);
+#endif
+			us->retval = 0;
+			return (0);
+		}
+	}
+
+	/*
+	 * We may not have a response buffer length provided.
+	 * This is done when writing a sysctl value.
+	 */
+	if (nvlist_exists_number(nvl, "sysctl_respbuf_len")) {
+
+		/*
+		 * Only validate length here if we don't have a shm.
+		 * We enforce a maximum size requirement on non-SHM
+		 * requests.
+		 */
+		if (us->shm_mem == NULL && nvlist_get_number(nvl,
+		    "sysctl_respbuf_len") > U_SYSCTL_MAX_REQ_BUF_LEN) {
+#ifdef	UINET_SYSCTL_DEBUG
+			fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is "
+			    "too big! (%llu)\n",
+			    __func__,
+			    us->ns,
+			    (unsigned long long) nvlist_get_number(nvl,
+			      "sysctl_respbuf_len"));
+#endif
+			us->retval = 0;
+			return (0);
+		}
+		us->wbuf_len = nvlist_get_number(nvl, "sysctl_respbuf_len");
+	} else {
+		us->wbuf_len = 0;
+	}
+
+	/*
+	 * If we have a shm, ensure respbuf_len <= shm_len.
+	 */
+	if (us->shm_mem != NULL) {
+		if (us->wbuf_len > us->shm_len) {
+#ifdef	UINET_SYSCTL_DEBUG
+			fprintf(stderr, "%s: fd %d: respbuf_len %lld > shm_len %lld\n",
+			    __func__,
+			    us->ns,
+			    (long long) us->wbuf_len,
+			    (long long) us->shm_len);
+#endif
+			us->retval = 0;
+			return (0);
+		}
+	}
+
+	/*
+	 * If we have a shm_buf, pass that in.
+	 *
+	 * Otherwise, if wbuf_len is 0, pass in a NULL wbuf.
+	 *
+	 * Otherwise, allocate a wbuf.
+	 */
+
+	/* If wbuf_len is 0, then pass in a NULL wbuf */
+	if (us->shm_mem != NULL) {
+		us->wbuf = NULL;
+		us->oldp = us->shm_mem;
+	}
+	if (us->wbuf_len == 0) {
+		us->wbuf = NULL;
+		us->oldp = NULL;
+	} else {
+		us->wbuf = calloc(1, us->wbuf_len);
+		if (us->wbuf == NULL) {
+#ifdef	UINET_SYSCTL_DEBUG
+			fprintf(stderr, "%s: fd %d: malloc failed\n", __func__, us->ns);
+#endif
+			us->retval = 0;
+			return (0);
+		}
+		us->oldp = us->wbuf;
+	}
+
+	/* sysctl_reqbuf */
+	if (nvlist_exists_binary(nvl, "sysctl_reqbuf")) {
+		us->sbuf = nvlist_get_binary(nvl, "sysctl_reqbuf", &us->sbuf_len);
+	} else {
+		us->sbuf = NULL;
+		us->sbuf_len = 0;
+	}
+
+	return (1);
+}
+
+
 static void
 passive_sysctl_handle_resp(struct u_sysctl_state_t *us)
 {
@@ -181,6 +327,8 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 	/* Setup! */
 	passive_sysctl_state_init(us, ns);
 
+	/* Parse initial bits */
+
 	/*
 	 * We absolutely require there to be a sysctl_oid field.
 	 * Ensure it's here.
@@ -208,140 +356,9 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 		goto finish;
 	}
 
-	/*
-	 * If the shm stuff is provided, grab it.
-	 *
-	 * XXX Validate that it is indeed a valid path somehow?
-	 */
-	if (nvlist_exists_string(nvl, "sysctl_respbuf_shm_path")) {
-		/* XXX strdup, then free as appropriate */
-		us->shm_path = nvlist_get_string(nvl, "sysctl_respbuf_shm_path");
-		if (! nvlist_exists_number(nvl, "sysctl_respbuf_shm_len")) {
-#ifdef	UINET_SYSCTL_DEBUG
-		fprintf(stderr, "%s: shm_path provided but not shm_len\n",
-		    __func__);
-#endif
-			us->retval = 0;
-			goto finish;
-		}
-
-		/*
-		 * If we have an shm_path, then we absolutely require
-		 * a respbuf_len field.
-		 */
-		if (! nvlist_exists_number(nvl, "sysctl_respbuf_len")) {
-#ifdef	UINET_SYSCTL_DEBUG
-			fprintf(stderr,
-			    "%s: shm_path provided but no shm_respbuf_len!\n",
-			    __func__);
-#endif
-			us->retval = 0;
-			goto finish;
-		}
-
-		us->shm_len = nvlist_get_number(nvl, "sysctl_respbuf_shm_len");
-
-		us->shm_fd = shm_open(us->shm_path, O_RDWR, 0644);
-		if (us->shm_fd < 0) {
-#ifdef	UINET_SYSCTL_DEBUG
-			warn("%s: shm_open (%s)", __func__, us->shm_path);
-#endif
-			us->retval = 0;
-			goto finish;
-		}
-
-		/* mmap it */
-		us->shm_mem = mmap(NULL, us->shm_len, PROT_READ, 0, us->shm_fd, 0);
-		if (us->shm_mem == NULL) {
-#ifdef	UINET_SYSCTL_DEBUG
-			warn("%s: mmap (%s)", __func__, us->shm_path);
-#endif
-			us->retval = 0;
-			goto finish;
-		}
-	}
-
-	/*
-	 * We may not have a response buffer length provided.
-	 * This is done when writing a sysctl value.
-	 */
-	if (nvlist_exists_number(nvl, "sysctl_respbuf_len")) {
-
-		/*
-		 * Only validate length here if we don't have a shm.
-		 * We enforce a maximum size requirement on non-SHM
-		 * requests.
-		 */
-		if (us->shm_mem == NULL && nvlist_get_number(nvl,
-		    "sysctl_respbuf_len") > U_SYSCTL_MAX_REQ_BUF_LEN) {
-#ifdef	UINET_SYSCTL_DEBUG
-			fprintf(stderr, "%s: fd %d: sysctl_respbuf_len is "
-			    "too big! (%llu)\n",
-			    __func__,
-			    ns,
-			    (unsigned long long) nvlist_get_number(nvl,
-			      "sysctl_respbuf_len"));
-#endif
-			us->retval = 0;
-			goto finish;
-		}
-		us->wbuf_len = nvlist_get_number(nvl, "sysctl_respbuf_len");
-	} else {
-		us->wbuf_len = 0;
-	}
-
-	/*
-	 * If we have a shm, ensure respbuf_len <= shm_len.
-	 */
-	if (us->shm_mem != NULL) {
-		if (us->wbuf_len > us->shm_len) {
-#ifdef	UINET_SYSCTL_DEBUG
-			fprintf(stderr, "%s: fd %d: respbuf_len %lld > shm_len %lld\n",
-			    __func__,
-			    ns,
-			    (long long) us->wbuf_len,
-			    (long long) us->shm_len);
-#endif
-			us->retval = 0;
-			goto finish;
-		}
-	}
-
-	/*
-	 * If we have a shm_buf, pass that in.
-	 *
-	 * Otherwise, if wbuf_len is 0, pass in a NULL wbuf.
-	 *
-	 * Otherwise, allocate a wbuf.
-	 */
-
-	/* If wbuf_len is 0, then pass in a NULL wbuf */
-	if (us->shm_mem != NULL) {
-		us->wbuf = NULL;
-		us->oldp = us->shm_mem;
-	}
-	if (us->wbuf_len == 0) {
-		us->wbuf = NULL;
-		us->oldp = NULL;
-	} else {
-		us->wbuf = calloc(1, us->wbuf_len);
-		if (us->wbuf == NULL) {
-#ifdef	UINET_SYSCTL_DEBUG
-			fprintf(stderr, "%s: fd %d: malloc failed\n", __func__, ns);
-#endif
-			us->retval = 0;
-			goto finish;
-		}
-		us->oldp = us->wbuf;
-	}
-
-	/* sysctl_reqbuf */
-	if (nvlist_exists_binary(nvl, "sysctl_reqbuf")) {
-		us->sbuf = nvlist_get_binary(nvl, "sysctl_reqbuf", &us->sbuf_len);
-	} else {
-		us->sbuf = NULL;
-		us->sbuf_len = 0;
-	}
+	/* parse shared bits */
+	if (! passive_sysctl_handle_req(us, nvl))
+		goto finish;
 
 	/* Issue sysctl */
 #ifdef	UINET_SYSCTL_DEBUG
