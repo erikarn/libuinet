@@ -26,6 +26,6 @@
 #ifndef	__SYSCTL_API_PRIV_H__
 #define	__SYSCTL_API_PRIV_H__
 
-extern	void * passive_sysctl_listener(void *arg);
+extern	void * uinet_host_sysctl_listener_thread(void *arg);
 
 #endif

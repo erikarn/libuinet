@@ -45,8 +45,8 @@
 #include "uinet_api.h"
 #include "uinet_config.h"
 #include "nv.h"
-#include "sysctl_api.h"
-#include "sysctl_api_priv.h"
+#include "uinet_host_sysctl_api.h"
+#include "uinet_host_sysctl_api_priv.h"
 
 #define	UINET_SYSCTL_DEBUG
 
@@ -456,7 +456,7 @@ finish:
 }
 
 void *
-passive_sysctl_listener(void *arg)
+uinet_host_sysctl_listener_thread(void *arg)
 {
 	int s, r;
 	struct sockaddr_un sun;

@@ -19,7 +19,7 @@ INCLUDES+= -I./machine_include
 INCLUDES+= -I./opt
 
 # Include search path for files that only include host OS headers
-HOST_INCLUDES= -I. -I${API_INCLUDES_ROOT} 
+HOST_INCLUDES= -I. -I${API_INCLUDES_ROOT} -I../libnv
 
 ifdef NETMAP_INCLUDES
 HOST_INCLUDES+= -I${NETMAP_INCLUDES}
@@ -155,7 +155,8 @@ UINET_HOST_SRCS+=		\
 	uinet_arc4random.c	\
 	uinet_host_interface.c	\
 	uinet_if_pcap_host.c	\
-	uinet_kern_shutdown.c
+	uinet_kern_shutdown.c	\
+	uinet_host_sysctl_api.c
 
 ifneq (${HOST_OS},Darwin)
 UINET_HOST_SRCS+= uinet_if_netmap_host.c

@@ -71,3 +71,4 @@ uinet_synfilter_getl2info
 uinet_synfilter_install
 uinet_sysctl
 uinet_sysctlbyname
+uinet_host_sysctl_listener_thread

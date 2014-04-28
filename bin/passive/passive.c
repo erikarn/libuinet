@@ -35,8 +35,8 @@
 #include <netinet/in.h>
 
 #include "uinet_api.h"
-#include "sysctl_api.h"
-#include "sysctl_api_priv.h"
+#include "uinet_host_sysctl_api.h"
+#include "uinet_host_sysctl_api_priv.h"
 
 #define EV_STANDALONE 1
 #define EV_UINET_ENABLE 1
@@ -916,7 +916,8 @@ int main (int argc, char **argv)
 								    interface_thread_start, &interfaces[i]);
 	}
 
-	error = pthread_create(&sysctl_thr, NULL, passive_sysctl_listener, NULL);
+	error = pthread_create(&sysctl_thr, NULL,
+	    uinet_host_sysctl_listener_thread, NULL);
 	if (error != 0) {
 		printf("Failed to bring up sysctl thread: %d\n", errno);
 	}
