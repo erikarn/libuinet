@@ -1,8 +1,8 @@
 # $FreeBSD: head/lib/libnv/Makefile 258065 2013-11-12 19:39:14Z pjd $
 
 LIB=	nv
-SHLIBDIR?= /lib
-SHLIB_MAJOR= 0
+#SHLIBDIR?= /lib
+#SHLIB_MAJOR= 0
 
 SRCS=	dnvlist.c
 SRCS+=	msgio.c
