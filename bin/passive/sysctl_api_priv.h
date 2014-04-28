@@ -23,9 +23,9 @@
  * SUCH DAMAGE.
  */
 
-#ifndef	__SYSCTL_API_H__
-#define	__SYSCTL_API_H__
+#ifndef	__SYSCTL_API_PRIV_H__
+#define	__SYSCTL_API_PRIV_H__
 
-#define	U_SYSCTL_MAX_REQ_BUF_LEN	1048576
+extern	void * passive_sysctl_listener(void *arg);
 
 #endif

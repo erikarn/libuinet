@@ -46,6 +46,7 @@
 #include "uinet_config.h"
 #include "nv.h"
 #include "sysctl_api.h"
+#include "sysctl_api_priv.h"
 
 #define	UINET_SYSCTL_DEBUG
 

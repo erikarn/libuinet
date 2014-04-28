@@ -36,6 +36,7 @@
 
 #include "uinet_api.h"
 #include "sysctl_api.h"
+#include "sysctl_api_priv.h"
 
 #define EV_STANDALONE 1
 #define EV_UINET_ENABLE 1
