@@ -248,8 +248,9 @@ passive_sysctl_handle_resp(struct u_sysctl_state_t *us)
 	 * doing a sysctl fetch on the given OID but with oldplen=0 and
 	 * oldp=NULL, oldplen gets updated with the storage size.
 	 */
+
 	/*
-	 * XXX Validate the response back from uinet_sysctl()
+	 * Validate the response back from uinet_sysctl()
 	 * is within bounds for the response back to the
 	 * client.
 	 */
