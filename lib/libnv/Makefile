@@ -19,3 +19,9 @@ libnv.a: $(OBJS)
 clean:
 	$(RM) $(OBJS) libnv.a
 
+install:
+	${UINET_INSTALL_DIR} -d ${UINET_DESTDIR}/lib
+	${UINET_INSTALL_DIR} -d ${UINET_DESTDIR}/include/nv
+	${UINET_INSTALL_LIB} libnv.a ${UINET_DESTDIR}/lib
+	${UINET_INSTALL_INC} dnv.h ${UINET_DESTDIR}/include/nv
+	${UINET_INSTALL_INC} nv.h ${UINET_DESTDIR}/include/nv

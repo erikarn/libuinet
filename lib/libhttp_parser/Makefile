@@ -109,6 +109,12 @@ clean:
 		http_parser.tar libhttp_parser.so* \
 		url_parser url_parser_g parsertrace parsertrace_g
 
+install:
+	${UINET_INSTALL_DIR} -d ${UINET_DESTDIR}/lib
+	${UINET_INSTALL_DIR} -d ${UINET_DESTDIR}/include/http_parser
+	${UINET_INSTALL_LIB} libhttp_parser.a ${UINET_DESTDIR}/lib
+	${UINET_INSTALL_INC} http_parser.h ${UINET_DESTDIR}/include/http_parser
+
 contrib/url_parser.c:	http_parser.h
 contrib/parsertrace.c:	http_parser.h
 

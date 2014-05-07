@@ -357,7 +357,16 @@ machine_includes:
 		cp -r $S/x86/include/* ${MACHINE_INCLUDES_ROOT}/x86;	\
 	fi
 
-
+install:
+	${UINET_INSTALL_DIR} -d ${UINET_DESTDIR}/lib
+	${UINET_INSTALL_DIR} -d ${UINET_DESTDIR}/include/libuinet/
+	${UINET_INSTALL_LIB} libuinet.a ${UINET_DESTDIR}/lib
+	${UINET_INSTALL_INC} api_include/uinet_api.h ${UINET_DESTDIR}/include/libuinet/
+	${UINET_INSTALL_INC} api_include/uinet_api_types.h ${UINET_DESTDIR}/include/libuinet/
+	${UINET_INSTALL_INC} api_include/uinet_api_errno.h ${UINET_DESTDIR}/include/libuinet/
+	${UINET_INSTALL_INC} api_include/uinet_config.h ${UINET_DESTDIR}/include/libuinet/
+	${UINET_INSTALL_INC} api_include/uinet_host_sysctl_api.h ${UINET_DESTDIR}/include/libuinet/
+	${UINET_INSTALL_INC} api_include/uinet_queue.h ${UINET_DESTDIR}/include/libuinet/
 
 #
 # Distilled from FreeBSD src/sys/conf/kern.post.mk
@@ -370,7 +379,6 @@ vnode_if_newproto.h:
 	${AWK} -f $S/tools/vnode_if.awk $S/kern/vnode_if.src -p
 vnode_if_typedef.h:
 	${AWK} -f $S/tools/vnode_if.awk $S/kern/vnode_if.src -q
-
 
 include ${TOPDIR}/mk/kern.mk
 
