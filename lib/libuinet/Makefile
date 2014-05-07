@@ -2,7 +2,6 @@
 # Derived from FreeBSD auto-generated kernel Makefile and
 # machine-specific Makefile templates
 #
-DEBUG=-gdwarf-2 -O
 
 TOPDIR?=${CURDIR}/../..
 S=${TOPDIR}/sys
@@ -12,6 +11,7 @@ OVERRIDE_INCLUDES_ROOT:=${CURDIR}/override_include
 X86_INCLUDES=0
 
 include ${TOPDIR}/mk/kern.pre.mk
+include ${TOPDIR}/cflags.mk
 
 KERNPREINCLUDES:= ${INCLUDES}
 INCLUDES= -I${OVERRIDE_INCLUDES_ROOT} -I${API_INCLUDES_ROOT} ${KERNPREINCLUDES}

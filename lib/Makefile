@@ -1,8 +1,13 @@
 
 SUBDIRS=libuinet libev libnv libhttp_parser
 
+TOPDIR?=${CURDIR}/..
+include ${TOPDIR}/cflags.mk
+
+default: all
+
 config:
-	(cd libev ; ./configure --with-uinet=../libuinet/api_include )
+	(cd libev ; env CFLAGS="${DEBUG}" ./configure --with-uinet=../libuinet/api_include )
 
 all:
 	for d in $(SUBDIRS); do ( cd $$d; $(MAKE) all ) ; done

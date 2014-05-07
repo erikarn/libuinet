@@ -1,4 +1,5 @@
 TOPDIR?=${CURDIR}/../..
+include ${TOPDIR}/cflags.mk
 
 PROG=passive
 
@@ -14,6 +15,6 @@ CFLAGS+= -I${TOPDIR}/lib/libhttp_parser -DENABLE_EXTRACT
 LDADD+=  -L${TOPDIR}/lib/libhttp_parser -lhttp_parser -lz
 endif
 
-DEBUG_FLAGS=-g -O0
+DEBUG_FLAGS=${DEBUG}
 
 include ${TOPDIR}/mk/prog.mk

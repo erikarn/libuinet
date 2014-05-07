@@ -1,6 +1,9 @@
 
 TOPDIR?=${CURDIR}/../..
 include ${TOPDIR}/lib.mk
+include ${TOPDIR}/cflags.mk
+
+CFLAGS+=	${DEBUG}
 
 LIB=	nv
 
