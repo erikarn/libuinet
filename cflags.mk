@@ -1,1 +1,1 @@
-DEBUG	?= -O -gdwarf-2
+DEBUG_FLAGS	?= -O -gdwarf-2

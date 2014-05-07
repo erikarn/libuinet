@@ -3,7 +3,7 @@ TOPDIR?=${CURDIR}/../..
 include ${TOPDIR}/lib.mk
 include ${TOPDIR}/cflags.mk
 
-CFLAGS+=	${DEBUG}
+CFLAGS+=	${DEBUG_FLAGS}
 
 LIB=	nv
 

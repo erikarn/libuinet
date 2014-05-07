@@ -7,7 +7,7 @@ include ${TOPDIR}/cflags.mk
 default: all
 
 config:
-	(cd libev ; env CFLAGS="${DEBUG}" ./configure --with-uinet=../libuinet/api_include )
+	(cd libev ; env CFLAGS="${DEBUG_FLAGS}" ./configure --with-uinet=../libuinet/api_include )
 
 all:
 	for d in $(SUBDIRS); do ( cd $$d; $(MAKE) all ) ; done

@@ -15,6 +15,4 @@ CFLAGS+= -I${TOPDIR}/lib/libhttp_parser -DENABLE_EXTRACT
 LDADD+=  -L${TOPDIR}/lib/libhttp_parser -lhttp_parser -lz
 endif
 
-DEBUG_FLAGS=${DEBUG}
-
 include ${TOPDIR}/mk/prog.mk
