@@ -61,3 +61,7 @@ endif
 clean:
 	@rm -f ${PROG} ${OBJS}
 
+all: ${PROG}
+
+
+config:

@@ -299,6 +299,8 @@ HOST_SRCS = ${UINET_HOST_SRCS}
 OBJS+= $(patsubst %.c,%.o,${SRCS})
 HOST_OBJS+= $(patsubst %.c,%.o,${HOST_SRCS})
 
+all: libuinet.a
+
 #
 # The library is built by first incrementally linking all the object
 # to resolve internal references.  Then, all symbols are made local.

@@ -1,8 +1,8 @@
 
-SUBDIRS=libuinet libev libnv libhttp_parser
+SUBDIRS=passive
 
 config:
-	(cd libev ; ./configure --with-uinet=../libuinet/api_include )
+	for d in $(SUBDIRS); do ( cd $$d; $(MAKE) config ) ; done
 
 all:
 	for d in $(SUBDIRS); do ( cd $$d; $(MAKE) all ) ; done
@@ -13,4 +13,3 @@ clean:
 install:
 	for d in $(SUBDIRS); do ( cd $$d; $(MAKE) install ) ; done
 
-default: config all
