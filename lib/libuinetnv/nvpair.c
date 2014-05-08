@@ -48,7 +48,7 @@ __FBSDID("$FreeBSD: head/lib/libnv/nvpair.c 258594 2013-11-25 20:45:30Z pjd $");
 #endif
 
 #include "common_impl.h"
-#include "nv.h"
+#include "uinet_nv.h"
 #include "nv_impl.h"
 #include "nvlist_impl.h"
 #include "nvpair_impl.h"

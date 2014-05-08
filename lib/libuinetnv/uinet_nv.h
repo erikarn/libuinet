@@ -29,8 +29,8 @@
  * $FreeBSD: head/lib/libnv/nv.h 258065 2013-11-12 19:39:14Z pjd $
  */
 
-#ifndef	_NV_H_
-#define	_NV_H_
+#ifndef	_UINET_NV_H_
+#define	_UINET_NV_H_
 
 #include <sys/cdefs.h>
 
@@ -39,8 +39,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#ifndef	_NVLIST_T_DECLARED
-#define	_NVLIST_T_DECLARED
+#ifndef	_UINET_NVLIST_T_DECLARED
+#define	_UINET_NVLIST_T_DECLARED
 struct nvlist;
 
 typedef struct nvlist nvlist_t;

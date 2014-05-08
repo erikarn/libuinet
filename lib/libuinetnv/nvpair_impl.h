@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2013 The FreeBSD Foundation
+ * Copyright (c) 2009-2013 The FreeBSD Foundation
  * All rights reserved.
  *
  * This software was developed by Pawel Jakub Dawidek under sponsorship from
@@ -26,18 +26,33 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: head/lib/libnv/nvlist_impl.h 258065 2013-11-12 19:39:14Z pjd $
+ * $FreeBSD: head/lib/libnv/nvpair_impl.h 258065 2013-11-12 19:39:14Z pjd $
  */
 
-#ifndef	_NVLIST_IMPL_H_
-#define	_NVLIST_IMPL_H_
+#ifndef	_NVPAIR_IMPL_H_
+#define	_NVPAIR_IMPL_H_
+
+#include <sys/queue.h>
 
 #include <stdint.h>
 
-#include "nv.h"
+#include "uinet_nv.h"
 
-void *nvlist_xpack(const nvlist_t *nvl, int64_t *fdidxp, size_t *sizep);
-nvlist_t *nvlist_xunpack(const void *buf, size_t size, const int *fds,
-    size_t nfds);
+TAILQ_HEAD(nvl_head, nvpair);
 
-#endif	/* !_NVLIST_IMPL_H_ */
+void nvpair_assert(const nvpair_t *nvp);
+const nvlist_t *nvpair_nvlist(const nvpair_t *nvp);
+nvpair_t *nvpair_next(const nvpair_t *nvp);
+nvpair_t *nvpair_prev(const nvpair_t *nvp);
+void nvpair_insert(struct nvl_head *head, nvpair_t *nvp, nvlist_t *nvl);
+void nvpair_remove(struct nvl_head *head, nvpair_t *nvp, const nvlist_t *nvl);
+size_t nvpair_header_size(void);
+size_t nvpair_size(const nvpair_t *nvp);
+unsigned char *nvpair_pack(nvpair_t *nvp, unsigned char *ptr, int64_t *fdidxp,
+    size_t *leftp);
+const unsigned char *nvpair_unpack(int flags, const unsigned char *ptr,
+    size_t *leftp, const int *fds, size_t nfds, nvpair_t **nvpp);
+void nvpair_free_structure(nvpair_t *nvp);
+const char *nvpair_type_string(int type);
+
+#endif	/* !_NVPAIR_IMPL_H_ */

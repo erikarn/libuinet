@@ -29,8 +29,8 @@
  * $FreeBSD: head/lib/libnv/dnv.h 258065 2013-11-12 19:39:14Z pjd $
  */
 
-#ifndef	_DNV_H_
-#define	_DNV_H_
+#ifndef	_UINET_DNV_H_
+#define	_UINET_DNV_H_
 
 #include <sys/cdefs.h>
 
@@ -38,8 +38,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#ifndef	_NVLIST_T_DECLARED
-#define	_NVLIST_T_DECLARED
+#ifndef	_UINET_NVLIST_T_DECLARED
+#define	_UINET_NVLIST_T_DECLARED
 struct nvlist;
 
 typedef struct nvlist nvlist_t;
@@ -103,4 +103,4 @@ nvlist_t *dnvlist_takev_nvlist(nvlist_t *nvl, nvlist_t *defval, const char *name
 int dnvlist_takev_descriptor(nvlist_t *nvl, int defval, const char *namefmt, va_list nameap) __printflike(3, 0);
 void *dnvlist_takev_binary(nvlist_t *nvl, size_t *sizep, void *defval, size_t defsize, const char *namefmt, va_list nameap) __printflike(5, 0);
 
-#endif	/* !_DNV_H_ */
+#endif	/* !_UINET_DNV_H_ */

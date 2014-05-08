@@ -34,10 +34,9 @@ __FBSDID("$FreeBSD: head/lib/libnv/dnvlist.c 258065 2013-11-12 19:39:14Z pjd $")
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "nv.h"
+#include "uinet_nv.h"
 #include "nv_impl.h"
-
-#include "dnv.h"
+#include "uinet_dnv.h"
 
 #define	DNVLIST_GET(ftype, type)					\
 ftype									\

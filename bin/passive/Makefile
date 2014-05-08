@@ -5,7 +5,7 @@ PROG=passive
 
 SRCS=passive.c
 
-UINET_LIBS=uinet nv
+UINET_LIBS=uinet uinetnv
 
 CFLAGS= -I${TOPDIR}/lib/libev -I${TOPDIR}/lib/libnv
 LDADD= ${TOPDIR}/lib/libev/.libs/libev.a -lm -lpcap

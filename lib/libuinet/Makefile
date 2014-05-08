@@ -21,7 +21,7 @@ INCLUDES+= -I./machine_include
 INCLUDES+= -I./opt
 
 # Include search path for files that only include host OS headers
-HOST_INCLUDES= -I. -I${API_INCLUDES_ROOT} -I../libnv
+HOST_INCLUDES= -I. -I${API_INCLUDES_ROOT} -I../libuinetnv
 
 ifdef NETMAP_INCLUDES
 HOST_INCLUDES+= -I${NETMAP_INCLUDES}

@@ -50,7 +50,7 @@ __FBSDID("$FreeBSD: head/lib/libnv/nvlist.c 264021 2014-04-01 21:30:54Z jilles $
 #endif
 
 #include "msgio.h"
-#include "nv.h"
+#include "uinet_nv.h"
 #include "nv_impl.h"
 #include "nvlist_impl.h"
 #include "nvpair_impl.h"

@@ -44,7 +44,7 @@
 
 #include "uinet_api.h"
 #include "uinet_config.h"
-#include "nv.h"
+#include "uinet_nv.h"
 #include "uinet_host_sysctl_api.h"
 #include "uinet_host_sysctl_api_priv.h"
 
