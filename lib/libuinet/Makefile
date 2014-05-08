@@ -366,6 +366,7 @@ install:
 	${UINET_INSTALL_INC} api_include/uinet_api_errno.h ${UINET_DESTDIR}/include/libuinet/
 	${UINET_INSTALL_INC} api_include/uinet_config.h ${UINET_DESTDIR}/include/libuinet/
 	${UINET_INSTALL_INC} api_include/uinet_host_sysctl_api.h ${UINET_DESTDIR}/include/libuinet/
+	${UINET_INSTALL_INC} api_include/uinet_host_sysctl_api_priv.h ${UINET_DESTDIR}/include/libuinet/
 	${UINET_INSTALL_INC} api_include/uinet_queue.h ${UINET_DESTDIR}/include/libuinet/
 
 #
