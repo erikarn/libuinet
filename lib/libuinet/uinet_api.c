@@ -39,9 +39,11 @@
 #include <sys/uio.h>
 
 #include <net/if.h>
+#include <net/if_promiscinet.h>
 #include <netinet/in.h>
 #include <netinet/in_var.h>
 #include <netinet/in_promisc.h>
+#include <net/pfil.h>
 
 #include "uinet_api.h"
 #include "uinet_config_internal.h"
@@ -1217,5 +1219,115 @@ uinet_sysctl(int *name, u_int namelen, void *oldp, size_t *oldplen,
 	return (error);
 }
 
+/*
+ * XXX static callback sucks, but it's what I have to go on.
+ */
+static uinet_pfil_cb_t g_uinet_pfil_cb = NULL;
+static void * g_uinet_pfil_cbdata = NULL;
 
+/*
+ * Hook for processing IPv4 frames.
+ */
+static int
+uinet_pfil_in_hook_v4(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
+    struct inpcb *inp)
+{
+	struct ifl2info *l2i_tag;
+	struct uinet_in_l2info uinet_l2i;
 
+	/*
+	 * No hook? Turf out.
+	 */
+	if (g_uinet_pfil_cb == NULL)
+		return (0);
+
+	/*
+	 * See if there's L2 information for this frame.
+	 */
+	l2i_tag = (struct ifl2info *)m_tag_locate(*m,
+	    MTAG_PROMISCINET,
+	    MTAG_PROMISCINET_L2INFO,
+	    NULL);
+
+#if 0
+	if (l2i_tag == NULL) {
+		printf("%s: no L2 information\n",
+		    __func__);
+	} else {
+		printf("%s: src=%s",
+		    __func__,
+		    ether_sprintf(l2i_tag->ifl2i_info.inl2i_local_addr));
+		printf(" dst=%s\n",
+		    ether_sprintf(l2i_tag->ifl2i_info.inl2i_foreign_addr));
+	}
+#endif
+
+	/*
+	 * Populate the libuinet L2 header type
+	 *
+	 * XXX this should be a method!
+	 */
+	memcpy(&uinet_l2i, &l2i_tag->ifl2i_info, sizeof(uinet_l2i));
+
+	/*
+	 * Call our callback to process the frame
+	 */
+	g_uinet_pfil_cb((const struct uinet_mbuf *) *m, &uinet_l2i);
+
+	/* Pass all for now */
+	return (0);
+}
+
+/*
+ * XXX test hack to play with pfil
+ */
+int
+uinet_register_pfil_in(uinet_pfil_cb_t cb, void *arg)
+{
+	int error;
+	VNET_ITERATOR_DECL(vnet_iter);
+	struct pfil_head *pfh;
+
+	if (g_uinet_pfil_cb != NULL) {
+		printf("%s: callback already registered!\n", __func__);
+		return (-1);
+	}
+
+	g_uinet_pfil_cb = cb;
+	g_uinet_pfil_cbdata = arg;
+
+	VNET_LIST_RLOCK();
+	VNET_FOREACH(vnet_iter) {
+		CURVNET_SET(vnet_iter);
+		/* XXX TODO: ipv6 */
+		pfh = pfil_head_get(PFIL_TYPE_AF, AF_INET);
+		error = pfil_add_hook(uinet_pfil_in_hook_v4, NULL,
+		    PFIL_IN | PFIL_WAITOK, pfh);
+		CURVNET_RESTORE();
+	}
+	VNET_LIST_RUNLOCK();
+	return (0);
+}
+
+/*
+ * Get a pointer to the given mbuf data.
+ *
+ * This only grabs the pointer to this first mbuf; not the whole
+ * chain worth of data.  That's a different API (which likely should
+ * be implemented at some point.)
+ */
+const char *
+uinet_mbuf_data(const struct uinet_mbuf *m)
+{
+	const struct mbuf *mb = (const struct mbuf *) m;
+
+	return mtod(mb, const char *);
+}
+
+size_t
+uinet_mbuf_len(const struct uinet_mbuf *m)
+{
+	const struct mbuf *mb = (const struct mbuf *) m;
+
+	return (mb->m_len);
+}
