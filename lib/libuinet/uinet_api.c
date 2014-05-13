@@ -1267,12 +1267,14 @@ uinet_pfil_in_hook_v4(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
 	 *
 	 * XXX this should be a method!
 	 */
-	memcpy(&uinet_l2i, &l2i_tag->ifl2i_info, sizeof(uinet_l2i));
+	if (l2i_tag != NULL)
+		memcpy(&uinet_l2i, &l2i_tag->ifl2i_info, sizeof(uinet_l2i));
 
 	/*
 	 * Call our callback to process the frame
 	 */
-	g_uinet_pfil_cb((const struct uinet_mbuf *) *m, &uinet_l2i);
+	g_uinet_pfil_cb((const struct uinet_mbuf *) *m,
+	    l2i_tag != NULL ? &uinet_l2i : NULL);
 
 	/* Pass all for now */
 	return (0);
