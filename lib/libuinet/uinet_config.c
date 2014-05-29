@@ -34,6 +34,7 @@
 #include "uinet_config_internal.h"
 #include "uinet_if_netmap.h"
 #include "uinet_if_pcap.h"
+#include "uinet_if_bridge.h"
 
 static TAILQ_HEAD(config_head, uinet_config_if) if_conf = TAILQ_HEAD_INITIALIZER(if_conf);
 
@@ -136,6 +137,9 @@ uinet_ifcreate(uinet_iftype_t type, const char *configstr, const char *alias,
 	case UINET_IFTYPE_PCAP:
 		error = if_pcap_attach(cfg);
 		break;
+	case UINET_IFTYPE_BRIDGE:
+		error = if_bridge_attach(cfg);
+		break;
 	default:
 		printf("Error attaching interface with config %s: unknown interface type %d\n", cfg->configstr, cfg->type);
 		error = ENXIO;
@@ -178,6 +182,9 @@ uinet_ifdestroy(uinet_ifcookie_t cookie)
 			break;
 		case UINET_IFTYPE_PCAP:
 			error = if_pcap_detach(cfg);
+			break;
+		case UINET_IFTYPE_BRIDGE:
+			error = if_bridge_detach(cfg);
 			break;
 		default:
 			printf("Error detaching interface %s: unknown interface type %d\n", cfg->name, cfg->type);
