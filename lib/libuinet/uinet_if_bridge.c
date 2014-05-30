@@ -60,10 +60,20 @@ extern	struct mbuf *(*bridge_input_p)(struct ifnet *, struct mbuf *);
 extern	int (*bridge_output_p)(struct ifnet *, struct mbuf *,
 		struct sockaddr *, struct rtentry *);
 
+struct if_bridge_member;
+
+struct if_bridge_member {
+	LIST_ENTRY(if_bridge_member) bif_next;
+	struct ifnet *ifp;
+};
+
 struct if_bridge_softc {
 	struct ifnet *sc_ifp;
 	const struct uinet_config_if *cfg;
 	uint8_t addr[ETHER_ADDR_LEN];
+
+	struct mtx sc_mtx;
+	LIST_HEAD(, if_bridge_member) sc_iflist;   /* member interface list */
 
 	/* XXX TODO: more useful state? */
 };
@@ -77,6 +87,11 @@ static int bridge_if_count = 0;
 static struct mbuf *
 if_bridge_input(struct ifnet *ifp, struct mbuf *m)
 {
+	struct if_bridge_softc *sc;
+
+	sc = ifp->if_bridge;
+
+	printf("%s: m=%p: called\n", __func__, m);
 
 	/* XXX for now, consume */
 	m_freem(m);
@@ -148,6 +163,96 @@ if_bridge_qflush(struct ifnet *ifp)
 
 }
 
+static int
+if_bridge_existsm_locked(struct if_bridge_softc *sc, struct ifnet *nifp)
+{
+	struct if_bridge_member *bif;
+
+	/* XXX assert locked */
+	LIST_FOREACH(bif, &sc->sc_iflist, bif_next) {
+		if (bif->ifp == nifp)
+			return (1);
+	}
+	return (0);
+}
+
+static int
+if_bridge_addm(struct if_bridge_softc *sc, const char *ifname)
+{
+	struct ifnet *nifp = NULL;
+	struct if_bridge_member *bif;
+	int error = 0;
+
+	/* Do lookup */
+	nifp = ifunit_ref(ifname);
+	if (nifp == NULL) {
+		printf("%s: '%s' not found\n",
+		    __func__,
+		    ifname);
+		return (ENOENT);
+	}
+
+	mtx_lock(&sc->sc_mtx);
+
+	/* See if this exists. Don't double-add */
+	if (if_bridge_existsm_locked(sc, nifp)) {
+		printf("%s: '%s' already is in this bridge\n",
+		    __func__,
+		    ifname);
+		error = EINVAL;
+		goto fail;
+	}
+
+	/* Is it a member of ANY bridge? */
+	if (nifp->if_bridge != NULL) {
+		printf("%s: '%s' is already in _a_ bridge\n",
+		    __func__,
+		    ifname);
+		error = EBUSY;
+		goto fail;
+	}
+
+	/* Allocate bridge-member entry, add to list */
+	bif = malloc(sizeof(struct if_bridge_member), M_DEVBUF, M_NOWAIT);
+	if (bif == NULL) {
+		printf("%s: failed to malloc", __func__);
+		error = ENOMEM;
+		goto fail;
+	}
+
+	/* Add to list; link back from the ifnet to the parent bridge */
+	bif->ifp = nifp;
+	LIST_INSERT_HEAD(&sc->sc_iflist, bif, bif_next);
+	nifp->if_bridge = sc;
+
+	mtx_unlock(&sc->sc_mtx);
+
+	/* Make promisc */
+	error = ifpromisc(nifp, 1);
+	if (error != 0) {
+		mtx_lock(&sc->sc_mtx);
+		/* XXX methodize */
+		LIST_REMOVE(bif, bif_next);
+		mtx_unlock(&sc->sc_mtx);
+		free(bif, M_DEVBUF);
+		printf("%s: '%s' couldn't make it promisc!\n", __func__, ifname);
+		error = EINVAL;
+		goto fail;
+	}
+
+	printf("%s: added '%s' to bridge\n", __func__, ifname);
+
+	/* Done! */
+	return (0);
+fail:
+	mtx_unlock(&sc->sc_mtx);
+	/* Free reference */
+	if (nifp)
+		if_rele(nifp);
+
+	return (error);
+}
+
 int
 if_bridge_attach(struct uinet_config_if *cfg)
 {
@@ -211,6 +316,7 @@ if_bridge_attach(struct uinet_config_if *cfg)
 	 */
 	if_initname(sc->sc_ifp, sc->cfg->name, IF_DUNIT_NONE);
 	sc->sc_ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
+	sc->sc_ifp->if_mtu = 1500;	/* XXX verify! */
 
 	/*
 	 * Setup netif methods.
@@ -226,13 +332,24 @@ if_bridge_attach(struct uinet_config_if *cfg)
 	ether_ifattach(sc->sc_ifp, sc->addr);
 	sc->sc_ifp->if_capabilities = sc->sc_ifp->if_capenable = 0;
 
+	/* Mutex protecting the bridge list */
+	mtx_init(&sc->sc_mtx, "if_bridge", NULL, MTX_DEF);
+
+	/* This is our list of child interfaces */
+	LIST_INIT(&sc->sc_iflist);
+
 	/*
 	 * Add the given child interfaces to the bridge.
+	 * (whilst also putting them into promisc mode.)
 	 */
+	(void) if_bridge_addm(sc, "netmap0");
+	(void) if_bridge_addm(sc, "netmap1");
 
 	/*
 	 * Link uinet cfg state back to the newly setup ifnet.
 	 */
+	cfg->ifindex = sc->sc_ifp->if_index;
+	cfg->ifdata = sc;
 
 	return (0);
 
