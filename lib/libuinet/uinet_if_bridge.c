@@ -133,11 +133,6 @@ if_bridge_input(struct ifnet *ifp, struct mbuf *m)
 	mc2 = m_dup(m, M_DONTWAIT);
 	/* XXX count failure */
 	if (mc2 != NULL) {
-		/* Keep the layer3 header aligned */
-		int i = min(mc2->m_pkthdr.len, max_protohdr);
-		mc2 = m_copyup(mc2, i, ETHER_ALIGN);
-	}
-	if (mc2 != NULL) {
 		mc2->m_pkthdr.rcvif = bifp;
 		(*bifp->if_input)(bifp, mc2);
 	}
