@@ -88,6 +88,7 @@ static struct mbuf *
 if_bridge_input(struct ifnet *ifp, struct mbuf *m)
 {
 	struct if_bridge_softc *sc;
+	struct if_bridge_member *bif;
 	struct ifnet *bifp;
 	struct mbuf *mc2;
 
@@ -102,8 +103,35 @@ if_bridge_input(struct ifnet *ifp, struct mbuf *m)
 	 * bridged.
 	 */
 
+	 /* Duplicate; pass to the other port */
+	 /*
+	  * XXX so I'm not grabbing a reference when transmitting;
+	  * I'm just hoping that the interface isn't removed whilst
+	  * actively transmitting.
+	  */
+
+	/*
+	 * XXX TODO: don't hold the lock across sending to the two
+	 * (or more) ports - it's highly inefficient and effectively
+	 * serialises transmit.  We'll have to use the bridge XLOCK/
+	 * LOCK2REF/etc stuff to do this without holding a lock.
+	 */
+	 mtx_lock(&sc->sc_mtx);
+	LIST_FOREACH(bif, &sc->sc_iflist, bif_next) {
+		if (bif->ifp == ifp)
+			continue;
+		mc2 = m_dup(m, M_DONTWAIT);
+		/* XXX count failure */
+		if (mc2 == NULL)
+			continue;
+		/* XXX count failure */
+		(void) bif->ifp->if_transmit(bif->ifp, mc2);
+	}
+	mtx_unlock(&sc->sc_mtx);
+
 	/* Duplicate; pass up to the stack */
 	mc2 = m_dup(m, M_DONTWAIT);
+	/* XXX count failure */
 	if (mc2 != NULL) {
 		/* Keep the layer3 header aligned */
 		int i = min(mc2->m_pkthdr.len, max_protohdr);
@@ -125,6 +153,7 @@ if_bridge_output(struct ifnet *ifp, struct mbuf *m, struct sockaddr *sa,
     struct rtentry *rt)
 {
 
+	printf("%s: m=%p; called\n", __func__, m);
 	/* For now, we consume the frame */
 	m_freem(m);
 	return (0);
@@ -171,6 +200,8 @@ if_bridge_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 static int
 if_bridge_transmit(struct ifnet *ifp, struct mbuf *m)
 {
+
+	printf("%s: m=%p; called\n", __func__, m);
 
 	/* XXX for now, free */
 	m_freem(m);
