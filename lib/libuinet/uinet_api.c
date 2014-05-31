@@ -1224,6 +1224,7 @@ uinet_sysctl(int *name, u_int namelen, void *oldp, size_t *oldplen,
  */
 static uinet_pfil_cb_t g_uinet_pfil_cb = NULL;
 static void * g_uinet_pfil_cbdata = NULL;
+static struct ifnet *g_uinet_pfil_ifp = NULL;
 
 /*
  * Hook for processing IPv4 frames.
@@ -1239,6 +1240,16 @@ uinet_pfil_in_hook_v4(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
 	 * No hook? Turf out.
 	 */
 	if (g_uinet_pfil_cb == NULL)
+		return (0);
+
+	/*
+	 * Check if the ifp matches the ifp name we're interested in.
+	 * When doing bridging we will see incoming frames for the
+	 * physical incoming interface (eg netmap0, netmap1) and
+	 * the bridge interface (bridge0).  We may actually not want
+	 * that.
+	 */
+	if (g_uinet_pfil_ifp && (g_uinet_pfil_ifp != ifp))
 		return (0);
 
 	/*
@@ -1284,7 +1295,7 @@ uinet_pfil_in_hook_v4(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
  * XXX test hack to play with pfil
  */
 int
-uinet_register_pfil_in(uinet_pfil_cb_t cb, void *arg)
+uinet_register_pfil_in(uinet_pfil_cb_t cb, void *arg, const char *ifname)
 {
 	int error;
 	VNET_ITERATOR_DECL(vnet_iter);
@@ -1297,6 +1308,11 @@ uinet_register_pfil_in(uinet_pfil_cb_t cb, void *arg)
 
 	g_uinet_pfil_cb = cb;
 	g_uinet_pfil_cbdata = arg;
+
+	/* Take a reference to the ifnet if we're interested in it */
+	if (ifname != NULL) {
+		g_uinet_pfil_ifp = ifunit_ref(ifname);
+	}
 
 	VNET_LIST_RLOCK();
 	VNET_FOREACH(vnet_iter) {
