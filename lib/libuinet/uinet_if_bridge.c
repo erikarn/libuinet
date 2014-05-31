@@ -70,7 +70,7 @@ struct if_bridge_member {
 struct if_bridge_softc {
 	struct ifnet *sc_ifp;
 	const struct uinet_config_if *cfg;
-	uint8_t addr[ETHER_ADDR_LEN];
+	struct ether_addr sc_addr;
 
 	struct mtx sc_mtx;
 	LIST_HEAD(, if_bridge_member) sc_iflist;   /* member interface list */
@@ -304,11 +304,31 @@ fail:
 	return (error);
 }
 
+
+static struct ether_addr *
+i_ether_aton_r(const char *a, struct ether_addr *e)
+{
+	int i;
+	unsigned int o0, o1, o2, o3, o4, o5;
+
+	i = sscanf(a, "%x:%x:%x:%x:%x:%x", &o0, &o1, &o2, &o3, &o4, &o5);
+	if (i != 6)
+		return (NULL);
+	e->octet[0]=o0;
+	e->octet[1]=o1;
+	e->octet[2]=o2;
+	e->octet[3]=o3;
+	e->octet[4]=o4;
+	e->octet[5]=o5;
+	return (e);
+}
+
 int
 if_bridge_attach(struct uinet_config_if *cfg)
 {
 	struct if_bridge_softc *sc = NULL;
 	int error = 0;
+	char *cstr = NULL, *s;
 
 	if (NULL == cfg->configstr) {
 		error = EINVAL;
@@ -316,6 +336,12 @@ if_bridge_attach(struct uinet_config_if *cfg)
 	}
 
 	printf("%s: configstr=%s\n", __func__, cfg->configstr);
+	cstr = strdup(cfg->configstr, M_TEMP);
+	if (cstr == NULL) {
+		printf("%s: strdup failed\n", __func__);
+		error = ENOMEM;
+		goto fail;
+	}
 
 	sc = malloc(sizeof(struct if_bridge_softc), M_DEVBUF, M_WAITOK);
 	if (sc == NULL) {
@@ -341,15 +367,14 @@ if_bridge_attach(struct uinet_config_if *cfg)
 	bridge_output_p = if_bridge_output;
 
 	/*
-	 * Setup local MAC address from configuration.
-	 * XXX TODO
+	 * Setup initial local MAC address - random.
 	 */
-	sc->addr[0] = 0x62;
-	sc->addr[1] = 0x73;
-	sc->addr[2] = 0x64;
-	sc->addr[3] = arc4random();
-	sc->addr[4] = arc4random();
-	sc->addr[5] = arc4random();
+	sc->sc_addr.octet[0] = 0x62;
+	sc->sc_addr.octet[1] = 0x73;
+	sc->sc_addr.octet[2] = 0x64;
+	sc->sc_addr.octet[3] = arc4random();
+	sc->sc_addr.octet[4] = arc4random();
+	sc->sc_addr.octet[5] = arc4random();
 
 	 /*
 	  * Allocate netif context.
@@ -379,22 +404,52 @@ if_bridge_attach(struct uinet_config_if *cfg)
 
 	sc->sc_ifp->if_fib = sc->cfg->cdom;
 
-	/* Set local MAC now */
-	ether_ifattach(sc->sc_ifp, sc->addr);
-	sc->sc_ifp->if_capabilities = sc->sc_ifp->if_capenable = 0;
-
 	/* Mutex protecting the bridge list */
 	mtx_init(&sc->sc_mtx, "if_bridge", NULL, MTX_DEF);
 
 	/* This is our list of child interfaces */
 	LIST_INIT(&sc->sc_iflist);
 
-	/*
-	 * Add the given child interfaces to the bridge.
-	 * (whilst also putting them into promisc mode.)
-	 */
-	(void) if_bridge_addm(sc, "netmap0");
-	(void) if_bridge_addm(sc, "netmap1");
+	/* Parse the config string */
+	while ( (s = strsep(&cstr, ",")) != NULL) {
+		char *ss, *a, *v;
+		struct ether_addr ea;
+
+		ss = strdup(s, M_TEMP);
+		if (ss == NULL) {
+			printf("%s: strdup: failed\n", __func__);
+			error = ENOMEM;
+			goto fail;
+		}
+		a = strsep(&ss, "=");
+		v = strsep(&ss, "=");
+		if (a == NULL || v == NULL) {
+			printf("%s: invalid config chunk '%s'\n", __func__, s);
+			error = ENOMEM;
+			free(ss, M_TEMP);
+			goto fail;
+		}
+
+		/* Now, handle the various options */
+		if (strcmp(a, "if") == 0) {
+			/* XXX error check */
+			(void) if_bridge_addm(sc, v);
+		} else if (strcmp(a, "mac") == 0) {
+			/* XXX TODO: no ether_aton_r() in the kernel */
+			if (i_ether_aton_r(v, &ea) != NULL) {
+				sc->sc_addr = ea;
+			}
+		} else {
+			printf("%5s; unknown config option '%s'\n", __func__, a);
+			free(ss, M_TEMP);
+			goto fail;
+		}
+		free(ss, M_TEMP);
+	}
+
+	/* Set local MAC now */
+	ether_ifattach(sc->sc_ifp, sc->sc_addr.octet);
+	sc->sc_ifp->if_capabilities = sc->sc_ifp->if_capenable = 0;
 
 	/*
 	 * Link uinet cfg state back to the newly setup ifnet.
@@ -405,6 +460,8 @@ if_bridge_attach(struct uinet_config_if *cfg)
 	return (0);
 
 fail:
+	if (cstr)
+		free(cstr, M_TEMP);
 	/* XXX TODO: deregister child interfaces */
 	if (sc && sc->sc_ifp)
 		if_free(sc->sc_ifp);
