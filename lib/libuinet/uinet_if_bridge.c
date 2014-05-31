@@ -88,14 +88,34 @@ static struct mbuf *
 if_bridge_input(struct ifnet *ifp, struct mbuf *m)
 {
 	struct if_bridge_softc *sc;
+	struct ifnet *bifp;
+	struct mbuf *mc2;
 
 	sc = ifp->if_bridge;
+	bifp = sc->sc_ifp;
 
 	printf("%s: m=%p: called\n", __func__, m);
 
-	/* XXX for now, consume */
-	m_freem(m);
-	return (NULL);
+	/*
+	 * XXX todo: hook in a packet lookup function to
+	 * let bits of code decide if the packet should be
+	 * bridged.
+	 */
+
+	/* Duplicate; pass up to the stack */
+	mc2 = m_dup(m, M_DONTWAIT);
+	if (mc2 != NULL) {
+		/* Keep the layer3 header aligned */
+		int i = min(mc2->m_pkthdr.len, max_protohdr);
+		mc2 = m_copyup(mc2, i, ETHER_ALIGN);
+	}
+	if (mc2 != NULL) {
+		mc2->m_pkthdr.rcvif = bifp;
+		(*bifp->if_input)(bifp, mc2);
+	}
+
+	/* Return the original packet for local processing. */
+	return (m);
 }
 
 /*
