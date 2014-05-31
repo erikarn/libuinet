@@ -95,7 +95,7 @@ if_bridge_input(struct ifnet *ifp, struct mbuf *m)
 	sc = ifp->if_bridge;
 	bifp = sc->sc_ifp;
 
-	printf("%s: m=%p: called\n", __func__, m);
+//	printf("%s: m=%p: called\n", __func__, m);
 
 	/*
 	 * XXX todo: hook in a packet lookup function to
