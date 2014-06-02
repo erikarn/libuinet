@@ -65,6 +65,8 @@ struct if_bridge_member;
 struct if_bridge_member {
 	LIST_ENTRY(if_bridge_member) bif_next;
 	struct ifnet *ifp;
+	int is_inside;
+	int is_outside;
 };
 
 struct if_bridge_softc {
@@ -111,12 +113,17 @@ if_bridge_input(struct ifnet *ifp, struct mbuf *m)
 	  */
 
 	/*
+	 * XXX TODO: send packets out the right interface(s).
+	 * ie, from is_input? send to only is_output.
+	 */
+
+	/*
 	 * XXX TODO: don't hold the lock across sending to the two
 	 * (or more) ports - it's highly inefficient and effectively
 	 * serialises transmit.  We'll have to use the bridge XLOCK/
 	 * LOCK2REF/etc stuff to do this without holding a lock.
 	 */
-	 mtx_lock(&sc->sc_mtx);
+	mtx_lock(&sc->sc_mtx);
 	LIST_FOREACH(bif, &sc->sc_iflist, bif_next) {
 		if (bif->ifp == ifp)
 			continue;
@@ -223,7 +230,7 @@ if_bridge_existsm_locked(struct if_bridge_softc *sc, struct ifnet *nifp)
 }
 
 static int
-if_bridge_addm(struct if_bridge_softc *sc, const char *ifname)
+if_bridge_addm(struct if_bridge_softc *sc, const char *ifname, int isin)
 {
 	struct ifnet *nifp = NULL;
 	struct if_bridge_member *bif;
@@ -286,7 +293,12 @@ if_bridge_addm(struct if_bridge_softc *sc, const char *ifname)
 		goto fail;
 	}
 
-	printf("%s: added '%s' to bridge\n", __func__, ifname);
+	printf("%s: added '%s' to bridge (dir %s)\n", __func__, ifname,
+	    (isin ? "input" : "output"));
+	if (isin)
+		bif->is_inside = 1;
+	else
+		bif->is_outside = 1;
 
 	/* Done! */
 	return (0);
@@ -426,9 +438,12 @@ if_bridge_attach(struct uinet_config_if *cfg)
 		}
 
 		/* Now, handle the various options */
-		if (strcmp(a, "if") == 0) {
+		if (strcmp(a, "ifin") == 0) {
 			/* XXX error check */
-			(void) if_bridge_addm(sc, v);
+			(void) if_bridge_addm(sc, v, 1);
+		} else if (strcmp(a, "ifout") == 0) {
+			/* XXX error check */
+			(void) if_bridge_addm(sc, v, 0);
 		} else if (strcmp(a, "mac") == 0) {
 			/* XXX TODO: no ether_aton_r() in the kernel */
 			if (i_ether_aton_r(v, &ea) != NULL) {
