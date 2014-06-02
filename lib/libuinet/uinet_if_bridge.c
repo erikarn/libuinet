@@ -451,6 +451,7 @@ if_bridge_attach(struct uinet_config_if *cfg)
 	 */
 	cfg->ifindex = sc->sc_ifp->if_index;
 	cfg->ifdata = sc;
+	cfg->ifp = sc->sc_ifp;
 
 	return (0);
 
