@@ -126,6 +126,9 @@ int uinet_register_pfil_in(uinet_pfil_cb_t cb, void *arg, const char *ifname);
 
 const char * uinet_mbuf_data(const struct uinet_mbuf *);
 size_t uinet_mbuf_len(const struct uinet_mbuf *);
+/* XXX ew */
+struct uinet_config_if;
+int uinet_if_xmit(struct uinet_config_if *cif, const char *buf, int len);
 
 #ifdef __cplusplus
 }

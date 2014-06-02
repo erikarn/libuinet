@@ -1349,3 +1349,35 @@ uinet_mbuf_len(const struct uinet_mbuf *m)
 
 	return (mb->m_len);
 }
+
+/*
+ * Queue this buffer for transmit.
+ *
+ * The transmit path will take a copy of the data; it won't reference it.
+ *
+ * Returns 0 on OK, non-zero on error.
+ *
+ * Note: this reaches into kernel code, so you need to have set up all
+ * the possible transmit threads as uinet threads, or this call will
+ * fail.
+ */
+int
+uinet_if_xmit(struct uinet_config_if *cif, const char *buf, int len)
+{
+	struct mbuf *m;
+	struct ifnet *ifp;
+
+	/* Create mbuf; populate it with the given buffer */
+	m = m_getcl(M_DONTWAIT, MT_DATA, M_PKTHDR);
+	if (m == NULL)
+		return (ENOBUFS);
+
+	if (! m_append(m, (size_t) len, (void *) buf)) {
+		m_freem(m);
+		return (ENOMEM);
+	}
+
+	/* Call if_transmit() on the given interface */
+	ifp = cif->ifp;
+	return ((ifp->if_transmit)(ifp, m));
+}

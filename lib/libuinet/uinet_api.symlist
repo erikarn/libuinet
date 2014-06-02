@@ -75,3 +75,4 @@ uinet_host_sysctl_listener_thread
 uinet_register_pfil_in
 uinet_mbuf_data
 uinet_mbuf_len
+uinet_if_xmit
