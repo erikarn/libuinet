@@ -1362,8 +1362,9 @@ uinet_mbuf_len(const struct uinet_mbuf *m)
  * fail.
  */
 int
-uinet_if_xmit(struct uinet_config_if *cif, const char *buf, int len)
+uinet_if_xmit(void *cookie, const char *buf, int len)
 {
+	struct uinet_config_if *cif = cookie;
 	struct mbuf *m;
 	struct ifnet *ifp;
 
