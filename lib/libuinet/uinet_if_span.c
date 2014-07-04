@@ -56,8 +56,8 @@
  * the traffic from various interfaces.
  */
 
-extern	struct mbuf *(*span_input_p)(struct ifnet *, struct mbuf *);
-extern	int (*span_output_p)(struct ifnet *, struct mbuf *,
+extern	struct mbuf *(*bridge_input_p)(struct ifnet *, struct mbuf *);
+extern	int (*bridge_output_p)(struct ifnet *, struct mbuf *,
 		struct sockaddr *, struct rtentry *);
 
 struct if_span_member;
@@ -327,7 +327,7 @@ if_span_attach(struct uinet_config_if *cfg)
 	 * frames and link status changes, we need to
 	 * also do the same.
 	 */
-	brige_input_p = if_span_input;
+	bridge_input_p = if_span_input;
 	bridge_output_p = if_span_output;
 
 	/*
