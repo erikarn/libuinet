@@ -147,7 +147,8 @@ UINET_SRCS+=			\
 	uinet_vm_kern.c		\
 	uinet_vm_meter.c	\
 	uinet_vm_object.c	\
-	uinet_if_bridge.c
+	uinet_if_bridge.c	\
+	uinet_if_span.c
 
 ifneq (${HOST_OS},Darwin)
 UINET_SRCS+= uinet_if_netmap.c
