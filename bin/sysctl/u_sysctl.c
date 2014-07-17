@@ -16,8 +16,8 @@
 
 #include <sys/mman.h>
 
-#include "sysctl_api.h"
-#include "nv.h"
+#include "uinet_host_sysctl_api.h"
+#include "uinet_nv.h"
 
 /*
  * XXX TODO:
