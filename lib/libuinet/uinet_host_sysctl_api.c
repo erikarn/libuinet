@@ -255,7 +255,7 @@ passive_sysctl_handle_resp(struct u_sysctl_state_t *us)
 	 * is within bounds for the response back to the
 	 * client.
 	 */
-	if (us->wbuf != NULL && us->error == 0 && us->rval >= us->wbuf_len) {
+	if (us->wbuf != NULL && us->error == 0 && us->rval > us->wbuf_len) {
 		UINET_SYSCTL_DPRINTF("%s: fd %d: rval (%llu) > wbuf_len (%llu)\n",
 		    __func__,
 		    us->ns,
