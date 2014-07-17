@@ -1,5 +1,5 @@
 
-SUBDIRS=libuinet libev libuinetnv libhttp_parser
+SUBDIRS=libuinet libev libuinetnv libuinet_memstat libhttp_parser
 
 TOPDIR?=${CURDIR}/..
 include ${TOPDIR}/cflags.mk
