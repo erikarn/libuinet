@@ -74,7 +74,9 @@
  *  Setting IF_NETMAP_RXRING_ZCOPY_FRAC_NUM to zero will disable zero copy
  *  receive.
  */
-#define IF_NETMAP_RXRING_ZCOPY_FRAC_NUM 1
+//#define IF_NETMAP_RXRING_ZCOPY_FRAC_NUM 1
+/* Disable zero-copy for now */
+#define IF_NETMAP_RXRING_ZCOPY_FRAC_NUM 0
 #define IF_NETMAP_RXRING_ZCOPY_FRAC_DEN 2
 
 #define IF_NETMAP_THREAD_STOP_CHECK_MS 200
