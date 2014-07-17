@@ -29,7 +29,7 @@
 #include <sys/cdefs.h>
 #include <sys/param.h>
 #include <sys/malloc.h>
-#include <sys/sysctl.h>
+//#include <sys/sysctl.h>
 
 #include <err.h>
 #include <errno.h>
@@ -41,6 +41,9 @@
 
 #include "memstat.h"
 #include "memstat_internal.h"
+
+#include "u_sysctl.h"
+#include "uinet_host_sysctl_api.h"
 
 static struct nlist namelist[] = {
 #define	X_KMEMSTATISTICS	0
@@ -72,6 +75,13 @@ memstat_sysctl_malloc(struct memory_type_list *list, int flags)
 	int count, hint_dontsearch, i, j, maxcpus;
 	char *buffer, *p;
 	size_t size;
+	int fd;
+
+	fd = u_sysctl_open();
+	if (fd < 0) {
+		fprintf(stderr, "%s: u_sysctl_open() failed\n", __func__);
+		return (-1);
+	}
 
 	hint_dontsearch = LIST_EMPTY(&list->mtl_list);
 
@@ -84,7 +94,7 @@ memstat_sysctl_malloc(struct memory_type_list *list, int flags)
 	 */
 retry:
 	size = sizeof(maxcpus);
-	if (sysctlbyname("kern.smp.maxcpus", &maxcpus, &size, NULL, 0) < 0) {
+	if (u_sysctlbyname(fd, "kern.smp.maxcpus", &maxcpus, &size, NULL, 0) < 0) {
 		if (errno == EACCES || errno == EPERM)
 			list->mtl_error = MEMSTAT_ERROR_PERMISSION;
 		else
@@ -97,7 +107,7 @@ retry:
 	}
 
 	size = sizeof(count);
-	if (sysctlbyname("kern.malloc_count", &count, &size, NULL, 0) < 0) {
+	if (u_sysctlbyname(fd, "kern.malloc_count", &count, &size, NULL, 0) < 0) {
 		if (errno == EACCES || errno == EPERM)
 			list->mtl_error = MEMSTAT_ERROR_PERMISSION;
 		else
@@ -118,7 +128,7 @@ retry:
 		return (-1);
 	}
 
-	if (sysctlbyname("kern.malloc_stats", buffer, &size, NULL, 0) < 0) {
+	if (u_sysctlbyname(fd, "kern.malloc_stats", buffer, &size, NULL, 0) < 0) {
 		/*
 		 * XXXRW: ENOMEM is an ambiguous return, we should bound the
 		 * number of loops, perhaps.
