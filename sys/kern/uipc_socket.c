@@ -2536,7 +2536,7 @@ sooptcopyin(struct sockopt *sopt, void *buf, size_t len, size_t minlen)
  * XXX: optlen is size_t, not socklen_t
  */
 int
-so_setsockopt(struct socket *so, int level, int optname, void *optval,
+so_setsockopt(struct socket *so, int level, int optname, const void *optval,
     size_t optlen)
 {
 	struct sockopt sopt;
@@ -2544,7 +2544,7 @@ so_setsockopt(struct socket *so, int level, int optname, void *optval,
 	sopt.sopt_level = level;
 	sopt.sopt_name = optname;
 	sopt.sopt_dir = SOPT_SET;
-	sopt.sopt_val = optval;
+	sopt.sopt_val = (void *)optval;
 	sopt.sopt_valsize = optlen;
 	sopt.sopt_td = NULL;
 	return (sosetopt(so, &sopt));
@@ -2667,11 +2667,11 @@ sosetopt(struct socket *so, struct sockopt *sopt)
 				
 				SOCK_LOCK(so);
 				in_promisc_l2info_copy(so->so_l2info, &l2info);
+				SOCK_UNLOCK(so);
 
 				/* Note: ignore error */
 				if (so->so_proto->pr_ctloutput)
 					(*so->so_proto->pr_ctloutput)(so, sopt);
-				SOCK_UNLOCK(so);
 			} else {
 				error = ENOPROTOOPT;
 			}

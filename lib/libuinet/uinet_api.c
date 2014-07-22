@@ -441,7 +441,7 @@ uinet_getl2info(struct uinet_socket *so, struct uinet_in_l2info *l2i)
 
 
 int
-uinet_setl2info(struct uinet_socket *so, struct uinet_in_l2info *l2i)
+uinet_setl2info(struct uinet_socket *so, const struct uinet_in_l2info *l2i)
 {
 	struct socket *so_internal = (struct socket *)so;
 	int error = 0;
@@ -453,8 +453,8 @@ uinet_setl2info(struct uinet_socket *so, struct uinet_in_l2info *l2i)
 
 
 int
-uinet_setl2info2(struct uinet_socket *so, uint8_t *local_addr, uint8_t *foreign_addr,
-		 uint16_t flags, struct uinet_in_l2tagstack *tagstack)
+uinet_setl2info2(struct uinet_socket *so, const uint8_t *local_addr, const uint8_t *foreign_addr,
+		 uint16_t flags, const struct uinet_in_l2tagstack *tagstack)
 {
 	struct uinet_in_l2info l2i;
 
