@@ -94,6 +94,11 @@ typedef cpu_set_t cpuset_t;
 static struct itimerval prof_itimer;
 #endif /* UINET_PROFILE */
 
+#if defined(UINET_STACK_UNWIND)
+#define UNW_LOCAL_ONLY
+#include <libunwind.h>
+#endif /* UINET_STACK_UNWIND */
+
 static pthread_key_t thread_specific_data_key;
 static unsigned int uhi_num_cpus;
 
@@ -1081,4 +1086,28 @@ int
 uhi_msg_rsp_wait(struct uhi_msg *msg, void *payload)
 {
 	return (uhi_msg_sock_read(msg->fds[0], payload, msg->rsp_size));
+}
+
+int
+uhi_get_stacktrace(uintptr_t *pcs, int npcs)
+{
+#if defined(UINET_STACK_UNWIND)
+	unw_cursor_t cursor;
+	unw_context_t uc;
+	unw_word_t ip, sp;
+	int i = 0;
+
+	unw_getcontext(&uc);
+	unw_init_local(&cursor, &uc);
+	while (unw_step(&cursor) > 0 && i < npcs) {
+		unw_get_reg(&cursor, UNW_REG_IP, &ip);
+		unw_get_reg(&cursor, UNW_REG_SP, &sp);
+		pcs[i] = (uintptr_t) ip;
+//		printf ("ip = %lx, sp = %lx\n", (long) ip, (long) sp);
+		i++;
+	}
+	return (i);
+#else
+	return (0);
+#endif
 }

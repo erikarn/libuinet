@@ -180,5 +180,6 @@ int uhi_msg_wait(struct uhi_msg *msg, void *payload);
 int uhi_msg_rsp_send(struct uhi_msg *msg, void *payload);
 int uhi_msg_rsp_wait(struct uhi_msg *msg, void *payload);
 
+int uhi_get_stacktrace(uintptr_t *pcs, int npcs);
 
 #endif /* _UINET_HOST_INTERFACE_H_ */
