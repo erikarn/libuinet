@@ -166,7 +166,7 @@ _mtx_lock_flags(struct mtx *m, int opts, const char *file, int line)
 
 	WITNESS_CHECKORDER(&m->lock_object, opts | LOP_NEWORDER | LOP_EXCLUSIVE,
 	    file, line, NULL);
-	uhi_mutex_lock(&m->mtx_lock);
+	_uhi_mutex_lock(&m->mtx_lock, file, line);
 	WITNESS_LOCK(&m->lock_object, opts | LOP_EXCLUSIVE, file, line);
 }
 
@@ -175,7 +175,7 @@ _mtx_unlock_flags(struct mtx *m, int opts, const char *file, int line)
 {
 
 	WITNESS_UNLOCK(&m->lock_object, opts | LOP_EXCLUSIVE, file, line);
-	uhi_mutex_unlock(&m->mtx_lock);
+	_uhi_mutex_unlock(&m->mtx_lock, file, line);
 }
 
 int
@@ -183,7 +183,7 @@ _mtx_trylock(struct mtx *m, int opts, const char *file, int line)
 {
 	int rval;
 
-	rval = uhi_mutex_trylock(&m->mtx_lock);
+	rval = _uhi_mutex_trylock(&m->mtx_lock, file, line);
 	if (rval) {
 		WITNESS_LOCK(&m->lock_object, opts | LOP_EXCLUSIVE | LOP_TRYLOCK,
 		    file, line);
@@ -198,7 +198,7 @@ _mtx_lock_spin_flags(struct mtx *m, int opts, const char *file, int line)
 
 	WITNESS_CHECKORDER(&m->lock_object, opts | LOP_NEWORDER | LOP_EXCLUSIVE,
 	    file, line, NULL);
-	uhi_mutex_lock(&m->mtx_lock);
+	_uhi_mutex_lock(&m->mtx_lock, file, line);
 	WITNESS_LOCK(&m->lock_object, opts | LOP_EXCLUSIVE, file, line);
 }
 
@@ -207,5 +207,5 @@ _mtx_unlock_spin_flags(struct mtx *m, int opts, const char *file, int line)
 {
 
 	WITNESS_UNLOCK(&m->lock_object, opts | LOP_EXCLUSIVE, file, line);
-	uhi_mutex_unlock(&m->mtx_lock);
+	_uhi_mutex_unlock(&m->mtx_lock, file, line);
 }

@@ -1395,3 +1395,27 @@ uinet_if_xmit(void *cookie, const char *buf, int len)
 	ifp = cif->ifp;
 	return ((ifp->if_transmit)(ifp, m));
 }
+
+int
+uinet_lock_log_set_file(const char *file)
+{
+
+	uhi_lock_log_set_file(file);
+	return (0);
+}
+
+int
+uinet_lock_log_enable(void)
+{
+
+	uhi_lock_log_enable();
+	return (0);
+}
+
+int
+uinet_lock_log_disable(void)
+{
+
+	uhi_lock_log_disable();
+	return (0);
+}

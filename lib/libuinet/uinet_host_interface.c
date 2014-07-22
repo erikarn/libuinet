@@ -102,6 +102,88 @@ static struct itimerval prof_itimer;
 static pthread_key_t thread_specific_data_key;
 static unsigned int uhi_num_cpus;
 
+static FILE *lock_log_fp = NULL;
+static pthread_mutex_t lock_log_mtx;
+static int lock_log_enabled = 0;
+static char *lock_log_filename = NULL;
+
+void
+uhi_lock_log_init(void)
+{
+
+	pthread_mutex_init(&lock_log_mtx, NULL);
+}
+
+void
+uhi_lock_log_set_file(const char *file)
+{
+
+	pthread_mutex_lock(&lock_log_mtx);
+	if (lock_log_filename)
+		free(lock_log_filename);
+	lock_log_filename = strdup(file);
+	pthread_mutex_unlock(&lock_log_mtx);
+}
+
+void
+uhi_lock_log_enable(void)
+{
+
+	pthread_mutex_lock(&lock_log_mtx);
+	if (lock_log_enabled == 1) {
+		pthread_mutex_unlock(&lock_log_mtx);
+		return;
+	}
+
+	lock_log_fp = fopen(lock_log_filename, "w+");
+	lock_log_enabled = 1;
+	pthread_mutex_unlock(&lock_log_mtx);
+}
+
+void
+uhi_lock_log_disable(void)
+{
+	FILE *fp = NULL;
+
+	pthread_mutex_lock(&lock_log_mtx);
+	if (lock_log_mtx == 0) {
+		pthread_mutex_unlock(&lock_log_mtx);
+		return;
+	}
+	fp = lock_log_fp;
+	lock_log_fp = NULL;
+	lock_log_enabled = 0;
+	pthread_mutex_unlock(&lock_log_mtx);
+
+	/* This may take some time, so do it out of the lock */
+	fclose(fp);
+}
+
+static void
+uhi_lock_log(const char *type, const char *what, void *ptr, const char *file, int line)
+{
+	struct timespec ts;
+
+	if (lock_log_enabled == 0)
+		return;
+
+	clock_gettime(CLOCK_MONOTONIC_FAST, &ts);
+
+	pthread_mutex_lock(&lock_log_mtx);
+	if (lock_log_fp != NULL) {
+		fprintf(lock_log_fp,
+		    "%llu.%06llu: type %s what %s where %s:%d ptr %p\n",
+		    (unsigned long long) (ts.tv_sec),
+		    (unsigned long long) (ts.tv_nsec / 1000),
+		    type,
+		    what,
+		    file,
+		    line,
+		    ptr);
+	}
+	pthread_mutex_unlock(&lock_log_mtx);
+}
+
 void
 uhi_init(void)
 {
@@ -120,6 +202,8 @@ uhi_init(void)
 	error = pthread_key_create(&thread_specific_data_key, NULL);
 	if (error != 0)
 		printf("Warning: unable to create pthread key for thread specific data (%d)\n", error);
+
+	uhi_lock_log_init();
 
 #if defined(UINET_PROFILE)
 	printf("getting prof timer\n");
@@ -684,8 +768,9 @@ uhi_mutex_destroy(uhi_mutex_t *m)
 
 
 void
-uhi_mutex_lock(uhi_mutex_t *m)
+_uhi_mutex_lock(uhi_mutex_t *m, const char *file, int line)
 {
+	uhi_lock_log("mtx", "lock", m, file, line);
 	pthread_mutex_lock((pthread_mutex_t *)(*m));
 }
 
@@ -694,15 +779,20 @@ uhi_mutex_lock(uhi_mutex_t *m)
  * Returns 0 if the mutex cannot be acquired, non-zero if it can.
  */
 int
-uhi_mutex_trylock(uhi_mutex_t *m)
+_uhi_mutex_trylock(uhi_mutex_t *m, const char *file, int line)
 {
-	return (0 == pthread_mutex_trylock((pthread_mutex_t *)(*m)));
+	int ret;
+	ret = (0 == pthread_mutex_trylock((pthread_mutex_t *)(*m)));
+	if (ret)
+		uhi_lock_log("mtx", "trylock", m, file, line);
+	return (ret);
 }
 
 
 void
-uhi_mutex_unlock(uhi_mutex_t *m)
+_uhi_mutex_unlock(uhi_mutex_t *m, const char *file, int line)
 {
+	uhi_lock_log("mtx", "unlock", m, file, line);
 	pthread_mutex_unlock((pthread_mutex_t *)(*m));
 }
 
@@ -765,65 +855,81 @@ uhi_rwlock_destroy(uhi_rwlock_t *rw)
 
 
 void
-uhi_rwlock_wlock(uhi_rwlock_t *rw)
+_uhi_rwlock_wlock(uhi_rwlock_t *rw, const char *file, int line)
 {
+	uhi_lock_log("rw", "wlock", rw, file, line);
 	pthread_mutex_lock((pthread_mutex_t *)(*rw));
 }
 
 
 int
-uhi_rwlock_trywlock(uhi_rwlock_t *rw)
+_uhi_rwlock_trywlock(uhi_rwlock_t *rw, const char *file, int line)
 {
-	return (0 == pthread_mutex_trylock((pthread_mutex_t *)(*rw)));
+	int ret;
+
+	ret = (0 == pthread_mutex_trylock((pthread_mutex_t *)(*rw)));
+	if (ret)
+		uhi_lock_log("rw", "trywlock", rw, file, line);
+	return (ret);
 }
 
 
 void
-uhi_rwlock_wunlock(uhi_rwlock_t *rw)
+_uhi_rwlock_wunlock(uhi_rwlock_t *rw, const char *file, int line)
 {
+	uhi_lock_log("rw", "wunlock", rw, file, line);
 	pthread_mutex_unlock((pthread_mutex_t *)(*rw));
 }
 
 
 void
-uhi_rwlock_rlock(uhi_rwlock_t *rw)
+_uhi_rwlock_rlock(uhi_rwlock_t *rw, const char *file, int line)
 {
+	uhi_lock_log("rw", "rlock", rw, file, line);
 	pthread_mutex_lock((pthread_mutex_t *)(*rw));
 }
 
 
 int
-uhi_rwlock_tryrlock(uhi_rwlock_t *rw)
+_uhi_rwlock_tryrlock(uhi_rwlock_t *rw, const char *file, int line)
 {
-	return (0 == pthread_mutex_trylock((pthread_mutex_t *)(*rw)));
+	int ret;
+
+	ret = (0 == pthread_mutex_trylock((pthread_mutex_t *)(*rw)));
+	if (ret)
+		uhi_lock_log("rw", "tryrlock", rw, file, line);
+	return (ret);
 }
 
 
 void
-uhi_rwlock_runlock(uhi_rwlock_t *rw)
+_uhi_rwlock_runlock(uhi_rwlock_t *rw, const char *file, int line)
 {
+	uhi_lock_log("rw", "runlock", rw, file, line);
 	pthread_mutex_unlock((pthread_mutex_t *)(*rw));
 }
 
 
 int
-uhi_rwlock_tryupgrade(uhi_rwlock_t *rw)
+_uhi_rwlock_tryupgrade(uhi_rwlock_t *rw, const char *file, int line)
 {
 	/*
 	 * Always succeeds as this implementation is always an exclusive
 	 * lock
 	 */
+	uhi_lock_log("rw", "tryupgrade", rw, file, line);
 	return (0);
 }
 
 
 void
-uhi_rwlock_downgrade(uhi_rwlock_t *rw)
+_uhi_rwlock_downgrade(uhi_rwlock_t *rw, const char *file, int line)
 {
 	/* 
 	 * Nothing to do here.  In this implementation, there is only one
 	 * grade of this lock.
 	 */
+	uhi_lock_log("rw", "downgrade", rw, file, line);
 }
 
 
