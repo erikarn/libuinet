@@ -128,10 +128,12 @@ UINET_SRCS+=			\
 	uinet_dev_random.c	\
 	uinet_sched.c		\
 	uinet_subr_bus.c	\
+	uinet_subr_kdb.c	\
 	uinet_subr_pcpu.c	\
 	uinet_subr_prf.c	\
 	uinet_subr_rtc.c	\
 	uinet_subr_smp.c	\
+	uinet_subr_stack.c	\
 	uinet_subr_uio.c	\
 	uinet_support.c		\
 	uinet_tty.c		\
@@ -207,6 +209,9 @@ KERN_SRCS+=			\
 	uipc_sockbuf.c		\
 	uipc_socket.c
 
+KERN_WITNESS_SRCS=		\
+	subr_witness.c		\
+	subr_stack.c		\
 
 KERN_MHEADERS+=		\
 	bus_if.m	\
@@ -297,6 +302,9 @@ MSRCS= $(patsubst %.m,%.c,${KERN_MSRCS})
 
 SRCS=  ${UINET_SRCS} ${CRYPTO_SRCS} ${KERN_SRCS} ${LIBKERN_SRCS} ${MACHINE_SRCS}
 SRCS+= ${MSRCS} ${NET_SRCS} ${NETINET_SRCS} ${NETINET6_SRCS} ${VM_SRCS}
+
+# If witness is enabled.
+# SRCS+= ${KERN_WITNESS_SRCS}
 
 HOST_SRCS = ${UINET_HOST_SRCS}
 
