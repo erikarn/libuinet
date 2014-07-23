@@ -923,7 +923,7 @@ _uhi_rwlock_tryupgrade(uhi_rwlock_t *rw, void *l, uint32_t tid, const char *file
 	 * lock
 	 */
 	uhi_lock_log("rw", "tryupgrade", l, tid, rw, file, line);
-	return (0);
+	return (1);
 }
 
 
