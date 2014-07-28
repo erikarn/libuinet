@@ -209,9 +209,9 @@ KERN_SRCS+=			\
 	uipc_sockbuf.c		\
 	uipc_socket.c
 
-KERN_WITNESS_SRCS=		\
-	subr_witness.c		\
-	subr_stack.c		\
+#KERN_WITNESS_SRCS=		\
+#	subr_witness.c		\
+#	subr_stack.c		\
 
 KERN_MHEADERS+=		\
 	bus_if.m	\
