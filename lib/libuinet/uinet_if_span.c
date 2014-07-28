@@ -97,7 +97,7 @@ if_span_input(struct ifnet *ifp, struct mbuf *m)
 //	printf("%s: m=%p: called\n", __func__, m);
 
 	/* Duplicate; pass up to the stack */
-	mc2 = m_dup(m, M_DONTWAIT);
+	mc2 = m_copypacket(m, M_DONTWAIT);
 	/* XXX count failure */
 	if (mc2 != NULL) {
 		mc2->m_pkthdr.rcvif = bifp;
