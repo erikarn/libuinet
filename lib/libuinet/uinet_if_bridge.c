@@ -136,6 +136,13 @@ if_bridge_input(struct ifnet *ifp, struct mbuf *m)
 	}
 	mtx_unlock(&sc->sc_mtx);
 
+	/* We don't do local processing; just punt to the bridge */
+
+	m->m_pkthdr.rcvif = bifp;
+	(*bifp->if_input)(bifp, m);
+	return (NULL);
+
+#if 0
 	/* Duplicate; pass up to the stack */
 	mc2 = m_copypacket(m, M_DONTWAIT);
 	/* XXX count failure */
@@ -146,6 +153,7 @@ if_bridge_input(struct ifnet *ifp, struct mbuf *m)
 
 	/* Return the original packet for local processing. */
 	return (m);
+#endif
 }
 
 /*
