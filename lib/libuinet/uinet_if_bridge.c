@@ -127,7 +127,8 @@ if_bridge_input(struct ifnet *ifp, struct mbuf *m)
 	LIST_FOREACH(bif, &sc->sc_iflist, bif_next) {
 		if (bif->ifp == ifp)
 			continue;
-		mc2 = m_copypacket(m, M_DONTWAIT);
+		//mc2 = m_copypacket(m, M_DONTWAIT);
+		mc2 = m_dup(m, M_DONTWAIT);
 		/* XXX count failure */
 		if (mc2 == NULL)
 			continue;
