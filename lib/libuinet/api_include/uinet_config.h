@@ -43,7 +43,9 @@ typedef enum {
 typedef enum {
 	UINET_IFTYPE_LOOPBACK,
 	UINET_IFTYPE_NETMAP,
-	UINET_IFTYPE_PCAP
+	UINET_IFTYPE_PCAP,
+	UINET_IFTYPE_BRIDGE,
+	UINET_IFTYPE_SPAN
 } uinet_iftype_t;
 
 
@@ -149,6 +151,18 @@ const char *uinet_ifgenericname(uinet_ifcookie_t cookie);
  *  Configure UDP and TCP blackholing.
  */
 int uinet_config_blackhole(uinet_blackhole_t action);
+
+/*
+ * general sysctl interface.
+ *
+ * XXX doesn't belong here!
+ */
+int
+uinet_sysctlbyname(char *name, char *oldp, size_t *oldplen,
+    char *newp, size_t newplen, size_t *retval, int flags);
+int
+uinet_sysctl(int *name, u_int namelen, void *oid, size_t *oldlenp,
+    void *new, size_t newlen, size_t *retval, int flags);
 
 #ifdef __cplusplus
 }

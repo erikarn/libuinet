@@ -76,9 +76,9 @@ void  uinet_pool_destroy(uinet_pool_t pool);
 int   uinet_pool_set_max(uinet_pool_t pool, int nitems);
 int   uinet_pool_get_max(uinet_pool_t pool);
 int   uinet_pool_get_cur(uinet_pool_t pool);
-int   uinet_setl2info(struct uinet_socket *so, struct uinet_in_l2info *l2i);
-int   uinet_setl2info2(struct uinet_socket *so, uint8_t *local_addr, uint8_t *foreign_addr,
-		       uint16_t flags, struct uinet_in_l2tagstack *tagstack);
+int   uinet_setl2info(struct uinet_socket *so, const struct uinet_in_l2info *l2i);
+int   uinet_setl2info2(struct uinet_socket *so, const uint8_t *local_addr, const uint8_t *foreign_addr,
+		       uint16_t flags, const struct uinet_in_l2tagstack *tagstack);
 void  uinet_shutdown(unsigned int signo);
 int   uinet_soaccept(struct uinet_socket *listener, struct uinet_sockaddr **nam, struct uinet_socket **aso);
 int   uinet_soallocuserctx(struct uinet_socket *so);
@@ -128,7 +128,14 @@ uinet_synf_deferral_t uinet_synfilter_deferral_alloc(struct uinet_socket *so, ui
 int   uinet_synfilter_deferral_deliver(struct uinet_socket *so, uinet_synf_deferral_t deferral, int decision);
 void  uinet_synfilter_deferral_free(uinet_synf_deferral_t deferral);
 uinet_api_synfilter_cookie_t uinet_synfilter_deferral_get_cookie(uinet_synf_deferral_t deferral);
+int uinet_register_pfil_in(uinet_pfil_cb_t cb, void *arg, const char *ifname);
 
+const char * uinet_mbuf_data(const struct uinet_mbuf *);
+size_t uinet_mbuf_len(const struct uinet_mbuf *);
+int uinet_if_xmit(void *cookie, const char *buf, int len);
+int uinet_lock_log_set_file(const char *file);
+int uinet_lock_log_enable(void);
+int uinet_lock_log_disable(void);
 
 #ifdef __cplusplus
 }

@@ -111,3 +111,40 @@ _rm_runlock(struct rmlock *rm,  struct rm_priotracker *tracker)
 
 	_rw_runlock((struct rwlock *)rm, __FILE__, __LINE__);
 }
+
+
+#if LOCK_DEBUG > 0
+void
+_rm_wlock_debug(struct rmlock *rm, const char *file, int line)
+{
+
+	_rw_wlock((struct rwlock *) rm, file, line);
+}
+
+void
+_rm_wunlock_debug(struct rmlock *rm, const char *file, int line)
+{
+
+	_rw_wunlock((struct rwlock *) rm, file, line);
+}
+
+int
+_rm_rlock_debug(struct rmlock *rm, struct rm_priotracker *tracker,
+    int trylock, const char *file, int line)
+{
+
+	if (trylock)
+		return _rw_try_rlock((struct rwlock *)rm, file, line);
+
+	_rw_rlock((struct rwlock *)rm, file, line);
+	return (1);
+}
+
+void
+_rm_runlock_debug(struct rmlock *rm,  struct rm_priotracker *tracker,
+    const char *file, int line)
+{
+
+	_rw_runlock((struct rwlock *)rm, file, line);
+}
+#endif
