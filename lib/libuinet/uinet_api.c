@@ -315,7 +315,7 @@ uinet_interface_create(const char *name)
 
 
 int
-uinet_interface_up(const char *name, unsigned int promisc, unsigned int promiscinet)
+uinet_interface_up(const char *name, unsigned int promisc, unsigned int promiscinet, int is_up)
 {
 	struct socket *cfg_so;
 	struct ifreq ifr;
@@ -329,7 +329,11 @@ uinet_interface_up(const char *name, unsigned int promisc, unsigned int promisci
 
 	error = uinet_ifconfig_do(cfg_so, SIOCGIFFLAGS, &ifr);
 	if (0 == error) {
-		ifr.ifr_flags |= IFF_UP;
+
+		/* Only bring the interface fully up if we're told to */
+		if (is_up)
+			ifr.ifr_flags |= IFF_UP;
+
 		if (promisc)
 			ifr.ifr_flagshigh |= IFF_PPROMISC >> 16;
 		
