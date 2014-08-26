@@ -49,7 +49,7 @@ int   uinet_initialize_thread(void);
 void  uinet_install_sighandlers(void);
 int   uinet_interface_add_alias(const char *name, const char *addr, const char *braddr, const char *mask);
 int   uinet_interface_create(const char *name);
-int   uinet_interface_up(const char *name, unsigned int promisc, unsigned int promiscinet);
+int   uinet_interface_up(const char *name, unsigned int promisc, unsigned int promiscinet, int is_up);
 int   uinet_l2tagstack_cmp(const struct uinet_in_l2tagstack *ts1, const struct uinet_in_l2tagstack *ts2);
 uint32_t uinet_l2tagstack_hash(const struct uinet_in_l2tagstack *ts);
 int   uinet_mac_aton(const char *macstr, uint8_t *macout);

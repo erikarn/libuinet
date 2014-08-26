@@ -31,6 +31,8 @@ struct if_pcap_host_context;
 typedef void (*if_pcap_handler)(void *ctx, const uint8_t *buf, unsigned int size);
 
 struct if_pcap_host_context *if_pcap_create_handle(const char *ifname, unsigned int isfile, if_pcap_handler handler, void *handlerarg);
+int if_pcap_write_to_file(struct if_pcap_host_context *ctx, const char *fname);
+int if_pcap_close_write_to_file(struct if_pcap_host_context *ctx);
 void if_pcap_destroy_handle(struct if_pcap_host_context *ctx);
 int if_pcap_sendpacket(struct if_pcap_host_context *ctx, const uint8_t *buf, unsigned int size);
 int if_pcap_loop(struct if_pcap_host_context *ctx);

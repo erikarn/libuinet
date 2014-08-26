@@ -43,7 +43,10 @@
 
 struct if_pcap_host_context {
 	pcap_t *p;
-	int isfile;
+	pcap_dumper_t *pd;	/* for writing out to a file */
+	pcap_t *wp;		/* write dump context */
+	int isfile;		/* for reading */
+	int write_file;
 	const char *ifname;
 	if_pcap_handler pkthandler;
 	void *pkthandlerarg;
@@ -51,6 +54,73 @@ struct if_pcap_host_context {
 	uint64_t last_packet_timestamp;		
 	char errbuf[PCAP_ERRBUF_SIZE];
 };
+
+/*
+ * Open an outgoing file for outbound data.
+ *
+ * This may be used during debugging to capture
+ * all data being sent out rather than writing
+ * it to the network.
+ *
+ * Returns 0 if OK, < 0 if error.
+ */
+int
+if_pcap_write_to_file(struct if_pcap_host_context *ctx, const char *fname)
+{
+	pcap_t *dp;
+	pcap_dumper_t *pd;
+
+	if (ctx->write_file != 0) {
+		printf("%s: already opened for writing!\n", __func__);
+		return (-1);
+	}
+
+	/* Create a fake DLT for our subsequent file open */
+	/* ethernet DLT, 65536 byte snaplen */
+	dp = pcap_open_dead(DLT_EN10MB, 65536);
+	if (dp == NULL) {
+		printf("%s: couldn't create pcap DLT\n", __func__);
+		return (-1);
+	}
+
+	/* Open file */
+	pd = pcap_dump_open(dp, fname);
+	if (pd == NULL) {
+		printf("%s: couldn't create dumpfile\n", __func__);
+		pcap_close(dp);
+		return (-1);
+	}
+
+	/* We're ready! */
+	ctx->pd = pd;
+	ctx->wp = dp;
+	ctx->write_file = 1;
+
+	return (0);
+}
+
+/*
+ * Close an open file write context.
+ *
+ * Returns 0 on OK, < 0 on error.
+ */
+int
+if_pcap_close_write_to_file(struct if_pcap_host_context *ctx)
+{
+
+	/* Not a fatal error */
+	if (ctx->write_file == 0)
+		return (0);
+
+	pcap_dump_flush(ctx->pd);
+	pcap_dump_close(ctx->pd);
+	pcap_close(ctx->wp);
+	ctx->pd = NULL;
+	ctx->wp = NULL;
+	ctx->write_file = 0;
+
+	return (0);
+}
 
 
 struct if_pcap_host_context *
@@ -123,7 +193,9 @@ fail:
 void
 if_pcap_destroy_handle(struct if_pcap_host_context *ctx)
 {
+
 	pcap_close(ctx->p);
+	(void) if_pcap_close_write_to_file(ctx);
 	free(ctx);
 }
 
@@ -131,10 +203,33 @@ if_pcap_destroy_handle(struct if_pcap_host_context *ctx)
 int
 if_pcap_sendpacket(struct if_pcap_host_context *ctx, const uint8_t *buf, unsigned int size)
 {
-	return pcap_sendpacket(ctx->p, buf, size);
+	struct pcap_pkthdr ph;
+	int64_t sec;
+	long nsec;
+
+	if (ctx->isfile == 0) {
+		return pcap_sendpacket(ctx->p, buf, size);
+	}
+
+	/* Don't write if we haven't explicitly enabled an output file */
+	if (ctx->write_file == 0) {
+		printf("if_pcap_send: Packet send attempt in file mode with no output file\n");
+		return (-1);
+	}
+
+	/* ok, setup ph with current timestamp info and move on */
+	uhi_clock_gettime(UHI_CLOCK_MONOTONIC, &sec, &nsec);
+	ph.ts.tv_sec = sec;
+	ph.ts.tv_usec = (long) nsec / (long) 1000L;
+	ph.caplen = size;
+	ph.len = size;
+
+	pcap_dump((u_char *) ctx->pd, &ph, buf);
+
+	//pcap_dump_flush(ctx->pd);
+
+	return (0);
 }
-
-
 
 static void
 if_pcap_packet_handler(struct if_pcap_host_context *ctx, const struct pcap_pkthdr *pkthdr, const unsigned char *pkt)

@@ -1509,7 +1509,7 @@ int main (int argc, char **argv)
 			printf("Bringing up interface %s\n", interfaces[i].alias);
 		}
 
-		error = uinet_interface_up(interfaces[i].alias, 1, interfaces[i].promisc);
+		error = uinet_interface_up(interfaces[i].alias, 1, interfaces[i].promisc, 1);
 		if (0 != error) {
 			printf("Failed to bring up interface %s (%d)\n", interfaces[i].alias, error);
 		}

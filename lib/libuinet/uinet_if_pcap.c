@@ -56,13 +56,17 @@ struct if_pcap_softc {
 	const struct uinet_config_if *cfg;
 	uint8_t addr[ETHER_ADDR_LEN];
 	int isfile;
+	int do_wait_rx;
+	int is_write_file;
 	char host_ifname[MAXNAMLEN];
+	char host_write_fname[MAXNAMLEN];
 
 	struct if_pcap_host_context *pcap_host_ctx;
 
 	struct thread *tx_thread;
 	struct thread *rx_thread;
 	struct mtx tx_lock;
+	struct mtx rx_lock;
 };
 
 
@@ -73,36 +77,73 @@ static void if_pcap_receive_handler(void *ctx, const uint8_t *buf, unsigned int 
 static unsigned int interface_count;
 
 
+/*
+ * Configuration options are comma delimited. This does mean that
+ * output files and output interfaces can't have commas in their
+ * filenames.
+ */
 
 static int
 if_pcap_process_configstr(struct if_pcap_softc *sc)
 {
 	char *configstr = sc->cfg->configstr;
 	int error = 0;
-	char *p;
+	char *s, *ss, *ss2;
+	char *a, *v;
 
+	configstr = strdup(sc->cfg->configstr, M_TEMP);
 
-	if (0 == strncmp(configstr, "file://", 7)) {
-		sc->isfile = 1;
+	/*
+	 * Loop over configstr, looking for comma separated
+	 * entries.
+	 */
 
-		p = &configstr[7];
-		if ('\0' == *p) {
-			error = EINVAL;
-			goto out;
+	while ( (s = strsep(&configstr, ",")) != NULL) {
+		ss = strdup(s, M_TEMP);
+		ss2 = ss;
+		a = strsep(&ss2, "=");
+		v = strsep(&ss2, "=");
+
+		/* file? */
+		if (0 == strncmp(a, "file", 4)) {
+			if ((strlen(v) > sizeof(sc->host_ifname) - 1)) {
+				error = ENAMETOOLONG;
+				free(ss, M_TEMP);
+				goto out;
+			}
+			sc->isfile = 1;
+			strcpy(sc->host_ifname, v);
 		}
-	} else {
-		sc->isfile = 0;
-		p = configstr;
-	}
 
-	if (strlen(p) > (sizeof(sc->host_ifname) - 1)) {
-		error = ENAMETOOLONG;
-		goto out;
-	}
+		/* ifname? */
+		else if (0 == strncmp(a, "ifname", 6)) {
+			if ((strlen(v) > sizeof(sc->host_ifname) - 1)) {
+				error = ENAMETOOLONG;
+				free(ss, M_TEMP);
+				goto out;
+			}
+			strcpy(sc->host_ifname, v);
+		}
 
-	strcpy(sc->host_ifname, p);
+		/* writefile? */
+		else if (0 == strncmp(a, "writefile", 9)) {
+			if ((strlen(v) > sizeof(sc->host_write_fname) - 1)) {
+				error = ENAMETOOLONG;
+				free(ss, M_TEMP);
+				goto out;
+			}
+			sc->is_write_file = 1;
+			strcpy(sc->host_write_fname, v);
+		}
+		else if (0 == strncmp(a, "dowaitrx", 8)) {
+			sc->do_wait_rx = !! (v[0] == '1');
+		}
+
+		/* XXX print out error? */
+	}
 
 out:
+	free(configstr, M_TEMP);
 	return (error);
 }
 
@@ -158,6 +199,16 @@ if_pcap_attach(struct uinet_config_if *cfg)
 		goto fail;
 	}
 
+	if (sc->is_write_file) {
+		if (0 != if_pcap_write_to_file(sc->pcap_host_ctx, sc->host_write_fname)) {
+			printf("Failed to create output file for %s (%s)\n",
+			    sc->host_ifname,
+			    sc->host_write_fname);
+			error = ENXIO;
+			goto fail;
+		}
+	}
+
 	cfg->ifindex = sc->ifp->if_index;
 	cfg->ifdata = sc;
 	cfg->ifp = sc->ifp;
@@ -184,6 +235,10 @@ if_pcap_init(void *arg)
 
 	ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	ifp->if_drv_flags &= ~IFF_DRV_OACTIVE;
+
+	mtx_lock(&sc->rx_lock);
+	wakeup(&sc->do_wait_rx);
+	mtx_unlock(&sc->rx_lock);
 }
 
 
@@ -227,7 +282,7 @@ if_pcap_send(void *arg)
 			ifp->if_opackets++;
 			ifp->if_obytes += pktlen;
 
-			if (!sc->isfile && (pktlen <= sizeof(copybuf))) {			
+			if (pktlen <= sizeof(copybuf)) {
 				if (NULL == m->m_next) {
 					/* all in one piece - avoid copy */
 					pkt = mtod(m, uint8_t *);
@@ -241,8 +296,6 @@ if_pcap_send(void *arg)
 				if (0 != if_pcap_sendpacket(sc->pcap_host_ctx, pkt, pktlen))
 					ifp->if_oerrors++;
 			} else {
-				if (sc->isfile)
-					printf("if_pcap_send: Packet send attempt in file mode\n");
 				ifp->if_oerrors++;
 			}
 
@@ -327,8 +380,17 @@ if_pcap_receive(void *arg)
 	if (sc->cfg->cpu >= 0)
 		sched_bind(sc->rx_thread, sc->cfg->cpu);
 
-	if (sc->isfile)
+	/*
+	 * If we're configured to wait on receive, then
+	 * wait until we're woken up via the ioctl path.
+	 */
+	if (sc->do_wait_rx) {
+		mtx_lock(&sc->rx_lock);
+		mtx_sleep(&sc->do_wait_rx, &sc->rx_lock, 0, "wrxstartlk", 0);
+		mtx_unlock(&sc->rx_lock);
+	} else if (sc->isfile) {
 		pause("pcaprx", hz);
+	}
 
 	result = if_pcap_loop(sc->pcap_host_ctx);
 	
@@ -364,6 +426,7 @@ if_pcap_setup_interface(struct if_pcap_softc *sc)
 
 
 	mtx_init(&sc->tx_lock, "txlk", NULL, MTX_DEF);
+	mtx_init(&sc->rx_lock, "rxlk", NULL, MTX_DEF);
 
 	if (kthread_add(if_pcap_send, sc, NULL, &sc->tx_thread, 0, 0, "pcap_tx: %s", ifp->if_xname)) {
 		printf("Could not start transmit thread for %s (%s)\n", ifp->if_xname, sc->host_ifname);
@@ -390,7 +453,17 @@ if_pcap_detach(struct uinet_config_if *cfg)
 	struct if_pcap_softc *sc = cfg->ifdata;
 
 	if (sc) {
+		/*
+		 * For testing, we need to at least be able to close
+		 * and flush the written file out.
+		 *
+		 * So let's at least shut down that part so testing
+		 * can be done.
+		 */
+		if (sc->is_write_file)
+			(void) if_pcap_close_write_to_file(sc->pcap_host_ctx);
 		/* XXX ether_ifdetach, stop threads */
+		/* XXX and wakeup sleeping things */
 
 #if notyet
 		if_pcap_destroy_handle(sc->pcap_host_ctx);
