@@ -245,11 +245,16 @@ u_sysctl_open(void)
 	int s;
 	struct sockaddr_un sun;
 	int r;
+	char *spath;
+
+	spath = getenv("SYSCTL_SOCK");
+	if (spath == NULL)
+		spath = "/tmp/sysctl.sock";
 
 	/* Connect to the destination socket */
 	bzero(&sun, sizeof(sun));
 
-	strcpy(sun.sun_path, "/tmp/sysctl.sock");
+	strcpy(sun.sun_path, spath);
 	sun.sun_len = 0;
 	sun.sun_family = AF_UNIX;
 
