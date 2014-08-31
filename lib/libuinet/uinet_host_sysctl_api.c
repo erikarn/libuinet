@@ -48,7 +48,7 @@
 #include "uinet_host_sysctl_api.h"
 #include "uinet_host_sysctl_api_priv.h"
 
-#define	UINET_SYSCTL_DEBUG
+//#define	UINET_SYSCTL_DEBUG
 
 #ifdef	UINET_SYSCTL_DEBUG
 #define	UINET_SYSCTL_DPRINTF(fmt, ...) fprintf(stderr, fmt, __VA_ARGS__)
