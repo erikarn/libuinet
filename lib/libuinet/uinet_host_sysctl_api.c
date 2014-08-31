@@ -460,13 +460,19 @@ uinet_host_sysctl_listener_thread(void *arg)
 {
 	int s, r;
 	struct sockaddr_un sun;
+	struct uinet_host_sysctl_cfg *cfg = arg;
+	char *path;
 
+	path = "/tmp/sysctl.sock";
+	if (cfg) {
+		path = cfg->sysctl_sock_path;
+	}
 	uinet_initialize_thread();
 
-	(void) unlink("/tmp/sysctl.sock");
+	(void) unlink(path);
 
 	bzero(&sun, sizeof(sun));
-	strcpy(sun.sun_path, "/tmp/sysctl.sock");
+	strcpy(sun.sun_path, path);
 	sun.sun_len = 0;
 	sun.sun_family = AF_UNIX;
 

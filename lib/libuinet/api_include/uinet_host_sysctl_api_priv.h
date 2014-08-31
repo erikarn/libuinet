@@ -26,6 +26,12 @@
 #ifndef	__SYSCTL_API_PRIV_H__
 #define	__SYSCTL_API_PRIV_H__
 
+#define	UINET_SYSCTL_MAXPATHLEN		1024
+
+struct uinet_host_sysctl_cfg {
+	char sysctl_sock_path[UINET_SYSCTL_MAXPATHLEN];
+};
+
 extern	void * uinet_host_sysctl_listener_thread(void *arg);
 
 #endif
