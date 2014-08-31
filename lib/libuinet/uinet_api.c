@@ -521,6 +521,9 @@ uinet_soaccept(struct uinet_socket *listener, struct uinet_sockaddr **nam, struc
 {
 	struct socket *head = (struct socket *)listener;
 	struct socket *so;
+#ifdef PASSIVE_INET
+	struct socket *peer_so;
+#endif
 	struct sockaddr *sa = NULL;
 	int error = 0;
 
@@ -570,11 +573,6 @@ uinet_soaccept(struct uinet_socket *listener, struct uinet_sockaddr **nam, struc
 	 */
 	SOCK_LOCK(so);			/* soref() and so_state update */
 	soref(so);			/* socket came from sonewconn() with an so_count of 0 */
-#ifdef PASSIVE_INET
-	/* Add an additional ref as each passive socket in a pair references the other */
-	if (so->so_options & SO_PASSIVE)
-		soref(so);
-#endif
 
 	TAILQ_REMOVE(&head->so_comp, so, so_list);
 	head->so_qlen--;
@@ -585,14 +583,14 @@ uinet_soaccept(struct uinet_socket *listener, struct uinet_sockaddr **nam, struc
 	SOCK_UNLOCK(so);
 
 #ifdef PASSIVE_INET
-	if (so->so_passive_peer) {
-		SOCK_LOCK(so->so_passive_peer);
-		soref(so->so_passive_peer);
-		/* Add an additional ref as each passive socket in a pair references the other */
-		soref(so->so_passive_peer);
-		so->so_passive_peer->so_state |=
+	peer_so = so->so_passive_peer;
+	if (so->so_options & SO_PASSIVE) {
+		KASSERT(peer_so, ("uinet_soaccept: passive socket has no peer"));
+		SOCK_LOCK(peer_so);
+		soref(peer_so);
+		peer_so->so_state |=
 		    (head->so_state & SS_NBIO) | SO_PASSIVECLNT;
-		SOCK_UNLOCK(so->so_passive_peer);
+		SOCK_UNLOCK(peer_so);
 	}
 #endif
 	ACCEPT_UNLOCK();
@@ -600,8 +598,8 @@ uinet_soaccept(struct uinet_socket *listener, struct uinet_sockaddr **nam, struc
 	error = soaccept(so, &sa);
 	if (error) {
 #ifdef PASSIVE_INET
-		if (so->so_passive_peer)
-			soclose(so->so_passive_peer);
+		if (peer_so)
+			soclose(peer_so);
 #endif
 		soclose(so);
 		return (error);
