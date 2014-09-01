@@ -133,6 +133,7 @@ int uinet_register_pfil_in(uinet_pfil_cb_t cb, void *arg, const char *ifname);
 const char * uinet_mbuf_data(const struct uinet_mbuf *);
 size_t uinet_mbuf_len(const struct uinet_mbuf *);
 int uinet_if_xmit(void *cookie, const char *buf, int len);
+
 int uinet_lock_log_set_file(const char *file);
 int uinet_lock_log_enable(void);
 int uinet_lock_log_disable(void);
