@@ -134,11 +134,13 @@ _rm_wlock_debug(struct rmlock *rm, const char *file, int line)
 
 	WITNESS_CHECKORDER(&rm->lock_object, LOP_NEWORDER | LOP_EXCLUSIVE, file,
 	    line, NULL);
-	_rm_wlock((struct rwlock *) rm);
+	_rm_wlock(rm);
+#if 0
 	if (rm->lock_object.lo_flags & RM_SLEEPABLE)
 		WITNESS_LOCK(&rm->rm_lock_sx.lock_object, LOP_EXCLUSIVE,
 		    file, line);
 	else
+#endif
 		WITNESS_LOCK(&rm->lock_object, LOP_EXCLUSIVE, file, line);
 }
 
@@ -146,13 +148,15 @@ void
 _rm_wunlock_debug(struct rmlock *rm, const char *file, int line)
 {
 
+#if 0
 	if (rm->lock_object.lo_flags & RM_SLEEPABLE)
 		WITNESS_UNLOCK(&rm->rm_lock_sx.lock_object, LOP_EXCLUSIVE,
 		    file, line);
 	else
+#endif
 		WITNESS_UNLOCK(&rm->lock_object, LOP_EXCLUSIVE, file, line);
 
-	_rm_wunlock((struct rwlock *) rm, file, line);
+	_rm_wunlock(rm);
 }
 
 int
@@ -160,15 +164,19 @@ _rm_rlock_debug(struct rmlock *rm, struct rm_priotracker *tracker,
     int trylock, const char *file, int line)
 {
 
+#if 0
 	if (!trylock && (rm->lock_object.lo_flags & RM_SLEEPABLE))
 		WITNESS_CHECKORDER(&rm->rm_lock_sx.lock_object, LOP_NEWORDER,
 		    file, line, NULL);
+#endif
 	WITNESS_CHECKORDER(&rm->lock_object, LOP_NEWORDER, file, line, NULL);
 
+#if 0
 	if (trylock)
-		return _rm_try_rlock((struct rwlock *)rm, file, line);
+		return _rm_try_rlock(rm);
+#endif
 
-	_rm_rlock((struct rwlock *)rm, file, line);
+	_rm_rlock(rm, tracker, trylock);
 	return (1);
 }
 
@@ -178,6 +186,6 @@ _rm_runlock_debug(struct rmlock *rm,  struct rm_priotracker *tracker,
 {
 
 	WITNESS_UNLOCK(&rm->lock_object, 0, file, line);
-	_rm_runlock((struct rwlock *)rm, file, line);
+	_rm_runlock(rm, tracker);
 }
 #endif
