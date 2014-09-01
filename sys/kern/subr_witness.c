@@ -1776,14 +1776,8 @@ enroll(const char *description, struct lock_class *lock_class)
 found:
 	w->w_refcount++;
 	mtx_unlock_spin(&w_mtx);
-	/*
-	 * XXX libuinet currently shortcuts a bunch of lock types and
-	 * implements them using other lock types.  The locking stuff
-	 * needs to be made .. saner.
-	 */
 	if (lock_class != w->w_class)
-//		WITNESS_PANIC(
-		printf(
+		WITNESS_PANIC(
 			"lock (%s) %s does not match earlier (%s) lock",
 			description, lock_class->lc_name,
 			w->w_class->lc_name);
