@@ -1273,9 +1273,6 @@ uinet_sysctl(int *name, u_int namelen, void *oldp, size_t *oldplen,
 	return (error);
 }
 
-/*
- * XXX static callback sucks, but it's what I have to go on.
- */
 static uinet_pfil_cb_t g_uinet_pfil_cb = NULL;
 static void * g_uinet_pfil_cbdata = NULL;
 static struct ifnet *g_uinet_pfil_ifp = NULL;
@@ -1346,7 +1343,7 @@ uinet_pfil_in_hook_v4(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
 }
 
 /*
- * XXX test hack to play with pfil
+ * Register a single hook for the AF_INET pfil.
  */
 int
 uinet_register_pfil_in(uinet_pfil_cb_t cb, void *arg, const char *ifname)
