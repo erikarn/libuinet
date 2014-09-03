@@ -1,3 +1,4 @@
+uinet_clearifstat
 uinet_cleartcpstat
 uinet_config_blackhole
 uinet_errno_to_os

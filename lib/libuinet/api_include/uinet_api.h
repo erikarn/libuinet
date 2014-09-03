@@ -37,6 +37,7 @@ extern "C" {
 #include "uinet_config.h"
 #include "uinet_queue.h"
 
+int   uinet_clearifstat(const char *name);
 void  uinet_finalize_thread(void);
 int   uinet_getl2info(struct uinet_socket *so, struct uinet_in_l2info *l2i);
 int   uinet_getifstat(const char *name, struct uinet_ifstat *stat);
