@@ -168,6 +168,13 @@ uinet_gettcpstat(struct uinet_tcpstat *stat)
 	*((struct tcpstat *)stat) = tcpstat;
 }
 
+void
+uinet_cleartcpstat(void)
+{
+
+	bzero(&tcpstat, sizeof(tcpstat));
+}
+
 
 char *
 uinet_inet_ntoa(struct uinet_in_addr in, char *buf, unsigned int size)
