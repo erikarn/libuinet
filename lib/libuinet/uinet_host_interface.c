@@ -459,6 +459,7 @@ int uhi_thread_bound_cpu()
 	int bound_cpu;
 	int i;
 
+	bzero(&cpuset, sizeof(cpuset));
 	pthread_getaffinity_np(pthread_self(), sizeof(cpuset_t), &cpuset);
 
 	/*
