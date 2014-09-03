@@ -506,6 +506,7 @@ uinet_host_sysctl_listener_thread(void *arg)
 		int ret;
 		const char *type;
 
+		sl = sizeof(sun_n);
 		ns = accept(s, (struct sockaddr *) &sun_n, &sl);
 		if (ns < 0) {
 			fprintf(stderr, "%s: accept failed: %d\n", __func__, errno);
