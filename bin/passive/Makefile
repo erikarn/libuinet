@@ -15,4 +15,7 @@ CFLAGS+= -I${TOPDIR}/lib/libhttp_parser -DENABLE_EXTRACT
 LDADD+=  -L${TOPDIR}/lib/libhttp_parser -lhttp_parser -lz
 endif
 
+maintainer-clean:
+	$(MAKE) clean
+
 include ${TOPDIR}/mk/prog.mk
