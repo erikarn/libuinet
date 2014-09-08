@@ -1,6 +1,7 @@
 
 
 TOPDIR?=${CURDIR}/../..
+include ${TOPDIR}/cflags.mk
 
 PROG_CXX=echo++
 
