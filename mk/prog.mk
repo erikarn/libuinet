@@ -17,6 +17,7 @@ endif
 
 ifdef PROG_CXX
 PROG=	${PROG_CXX}
+CXX=	c++
 endif
 
 ifndef PROG
