@@ -58,7 +58,7 @@ else
 endif
 
 
-clean:
+maintainer-clean clean:
 	@rm -f ${PROG} ${OBJS}
 
 all: ${PROG}
