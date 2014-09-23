@@ -12,8 +12,8 @@ config all clean install maintainer-clean:
 all-extra: version.extended
 
 install-extra:
-	mkdir -p ${UINET_DESTDIR}/libuinet
-	cp version.extended ${UINET_DESTDIR}/libuinet/version.extended
+	mkdir -p ${UINET_DESTDIR}/etc/libuinet
+	cp version.extended ${UINET_DESTDIR}/etc/libuinet/version.extended
 
 version.extended:
 	echo "buildroot: ${CURDIR}" > $@
