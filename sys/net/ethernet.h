@@ -51,6 +51,8 @@
  * Ethernet-specific mbuf flags.
  */
 #define	M_HASFCS	M_PROTO5	/* FCS included at end of frame */
+#define	M_BRIDGEIF_DIR_EXT	M_PROTO6 /* Bridge traffic; from external interface */
+#define	M_BRIDGEIF_DIR_INT	M_PROTO7 /* Bridge traffic; from internal interface */
 
 /*
  * Ethernet CRC32 polynomials (big- and little-endian verions).

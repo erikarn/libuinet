@@ -793,6 +793,14 @@ ether_input_internal(struct ifnet *ifp, struct mbuf *m)
 		ETHER_ADDR_COPY(l2info->inl2i_foreign_addr, eh->ether_shost);
 		l2ts->inl2t_cnt = 0;
 
+		/*
+		 * Handle the bridge mbuf flags to set interface directionality.
+		 */
+		if (m->m_flags & M_BRIDGEIF_DIR_INT)
+			l2info->inl2i_flags |= INL2I_TAG_SRCIF_INT;
+		else if (m->m_flags & M_BRIDGEIF_DIR_EXT)
+			l2info->inl2i_flags |= INL2I_TAG_SRCIF_EXT;
+
 		/* 
 		 * If the interface is in IFF_PROMISCINET mode and the hardware
 		 * processed an 802.1Q tag, copy it to the l2info mbuf tag and clear
