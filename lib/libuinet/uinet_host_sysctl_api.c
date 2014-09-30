@@ -25,6 +25,7 @@
 
 #include <assert.h>
 #include <pthread.h>
+#include <pthread_np.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -470,6 +471,13 @@ uinet_host_sysctl_listener_thread(void *arg)
 	uinet_initialize_thread();
 
 	(void) unlink(path);
+
+	/* Set thread title */
+#if defined(__FreeBSD__)
+	pthread_set_name_np(pthread_self(), "sysctl thread");
+#elif defined(__linux__)
+	pthread_setname_np(pthread_self(), "sysctl thread");
+#endif
 
 	bzero(&sun, sizeof(sun));
 	strcpy(sun.sun_path, path);
