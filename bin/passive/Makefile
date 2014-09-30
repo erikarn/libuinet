@@ -11,7 +11,7 @@ UINET_LIBES+=uinetnv
 endif
 
 
-CFLAGS+= -I${TOPDIR}/lib/libuinetnv
+CFLAGS+= -I${TOPDIR}/lib/libuinetnv -I${TOPDIR}/lib/libev
 LDADD= -L${UINET_DESTDIR}/lib/ ${TOPDIR}/lib/libev/.libs/libev.a ${TOPDIR}/lib/libuinetnv/libuinetnv.a -lm -lpcap
 
 ifndef NO_EXTRACT
