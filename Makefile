@@ -6,6 +6,7 @@ config all clean install maintainer-clean:
 	for d in $(SUBDIRS); do ( cd $$d && $(MAKE) $@) ||  exit 1 ; done
 	if [ "$@" = "all" -o "$@" = "install" ] ; then $(MAKE) $@-extra ; fi
 	#if [ "$@" = "all" ] ; then rm -f version.extended ; $(MAKE) version.extended ; fi
+easy_start: config all
 
 .PHONY: version.extended
 

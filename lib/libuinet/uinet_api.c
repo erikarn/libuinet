@@ -1304,8 +1304,8 @@ uinet_synfilter_install(struct uinet_socket *so, uinet_api_synfilter_callback_t 
 
 
 int
-uinet_sysctlbyname(char *name, char *oldp, size_t *oldplen,
-    char *newp, size_t newplen, size_t *retval, int flags)
+uinet_sysctlbyname(const char *name, char *oldp, size_t *oldplen,
+    const char *newp, size_t newplen, size_t *retval, int flags)
 {
 	int error;
 
@@ -1316,8 +1316,8 @@ uinet_sysctlbyname(char *name, char *oldp, size_t *oldplen,
 
 
 int
-uinet_sysctl(int *name, u_int namelen, void *oldp, size_t *oldplen,
-    void *newp, size_t newplen, size_t *retval, int flags)
+uinet_sysctl(const int *name, unsigned int namelen, void *oldp, size_t *oldplen,
+    const void *newp, size_t newplen, size_t *retval, int flags)
 {
 	int error;
 
@@ -1477,7 +1477,7 @@ uinet_if_xmit(void *cookie, const char *buf, int len)
 	if (m == NULL)
 		return (ENOBUFS);
 
-	if (! m_append(m, (size_t) len, (void *) buf)) {
+	if (! m_append(m, (size_t) len, (const void *) buf)) {
 		m_freem(m);
 		return (ENOMEM);
 	}
