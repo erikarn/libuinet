@@ -792,6 +792,7 @@ ether_input_internal(struct ifnet *ifp, struct mbuf *m)
 		ETHER_ADDR_COPY(l2info->inl2i_local_addr, eh->ether_dhost);
 		ETHER_ADDR_COPY(l2info->inl2i_foreign_addr, eh->ether_shost);
 		l2ts->inl2t_cnt = 0;
+		l2info->inl2i_flags = 0;
 
 		/*
 		 * Handle the bridge mbuf flags to set interface directionality.
