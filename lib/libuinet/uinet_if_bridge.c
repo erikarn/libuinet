@@ -121,6 +121,7 @@ if_bridge_input(struct ifnet *ifp, struct mbuf *m)
 	 */
 
 	/* Tag the mbuf with the correct direction information */
+	m->m_flags &= ~(M_BRIDGEIF_DIR_INT | M_BRIDGEIF_DIR_EXT);
 	if (bif->is_inside) {
 		m->m_flags |= M_BRIDGEIF_DIR_INT;
 	} else if (bif->is_outside) {
