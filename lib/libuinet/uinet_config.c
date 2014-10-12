@@ -196,10 +196,10 @@ uinet_ifdestroy_internal(struct uinet_if *uif)
 		error = if_pcap_detach(uif);
 		break;
 	case UINET_IFTYPE_BRIDGE:
-		error = if_bridge_detach(cfg);
+		error = if_bridge_detach(uif);
 		break;
 	case UINET_IFTYPE_SPAN:
-		error = if_span_detach(cfg);
+		error = if_span_detach(uif);
 		break;
 	default:
 		printf("Error detaching interface %s: unknown interface type %d\n", uif->name, uif->type);

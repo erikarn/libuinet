@@ -126,19 +126,19 @@ uinet_finalize_thread(void)
 int
 uinet_clearifstat(uinet_instance_t uinst, const char *name)
 {
-	struct uinet_config_if *ifcfg;
+	struct uinet_if *uif;
 	struct ifnet *ifp;
 	int error = 0;
 
-	CURVNET_SET(uinet->ui_vnet);
-	ifcfg = uinet_iffind_byname(name);
-	if (NULL == ifcfg) {
+	CURVNET_SET(uinst->ui_vnet);
+	uif = uinet_iffind_byname(name);
+	if (NULL == uif) {
 		printf("could not find interface %s\n", name);
 		error = EINVAL;
 		goto out;
 	}
 
-	ifp = ifnet_byindex_ref(ifcfg->ifindex);
+	ifp = ifnet_byindex_ref(uif->ifindex);
 	if (NULL == ifp) {
 		printf("could not find interface %s by index\n", name);
 		error = EINVAL;
@@ -229,12 +229,12 @@ uinet_gettcpstat(uinet_instance_t uinst, struct uinet_tcpstat *stat)
 }
 
 void
-uinet_cleartcpstat(void)
+uinet_cleartcpstat(uinet_instance_t uinst)
 {
 
 	CURVNET_SET(uinst->ui_vnet);
-	bzero(V_tcpstat, sizeof(tcpstat));
-	CURVNET_RESTORE(uinst->ui_vnet);
+	bzero(&V_tcpstat, sizeof(struct tcpstat));
+	CURVNET_RESTORE();
 }
 
 
@@ -1336,7 +1336,7 @@ uinet_synfilter_install(struct uinet_socket *so, uinet_api_synfilter_callback_t 
 
 int
 uinet_sysctlbyname(uinet_instance_t uinst, char *name, char *oldp, size_t *oldplen,
-    char *newp, size_t newplen, size_t *retval, int flags)
+    const char *newp, size_t newplen, size_t *retval, int flags)
 {
 	int error;
 
@@ -1350,7 +1350,7 @@ uinet_sysctlbyname(uinet_instance_t uinst, char *name, char *oldp, size_t *oldpl
 
 int
 uinet_sysctl(uinet_instance_t uinst, int *name, u_int namelen, void *oldp, size_t *oldplen,
-    void *newp, size_t newplen, size_t *retval, int flags)
+    const void *newp, size_t newplen, size_t *retval, int flags)
 {
 	int error;
 
