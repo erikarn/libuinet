@@ -35,7 +35,7 @@ struct uinet_in_l2info;
 
 typedef void * uinet_api_synfilter_cookie_t;
 
-typedef void (*uinet_pfil_cb_t)(const struct uinet_mbuf *m, struct uinet_in_l2info *l2i);
+typedef void (*uinet_pfil_cb_t)(const struct uinet_mbuf *m, struct uinet_in_l2info *l2i, void *cbdata);
 
 typedef int (*uinet_api_synfilter_callback_t)(struct uinet_socket *, void *, uinet_api_synfilter_cookie_t);
 

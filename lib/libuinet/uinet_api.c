@@ -1427,7 +1427,8 @@ uinet_pfil_in_hook_v4(void *arg, struct mbuf **m, struct ifnet *ifp, int dir,
 	 * Call our callback to process the frame
 	 */
 	V_uinet_pfil_cb((const struct uinet_mbuf *) *m,
-	    l2i_tag != NULL ? &uinet_l2i : NULL);
+	    l2i_tag != NULL ? &uinet_l2i : NULL,
+	        V_uinet_pfil_cbdata);
 
 	/* Pass all for now */
 	return (0);
