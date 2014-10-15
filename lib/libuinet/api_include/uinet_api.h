@@ -116,9 +116,9 @@ void  uinet_soupcall_clear_locked(struct uinet_socket *so, int which);
 void  uinet_soupcall_set(struct uinet_socket *so, int which, int (*func)(struct uinet_socket *, void *, int), void *arg);
 void  uinet_soupcall_set_locked(struct uinet_socket *so, int which, int (*func)(struct uinet_socket *, void *, int), void *arg);
 void  uinet_soupcall_unlock(struct uinet_socket *so, int which);
-int   uinet_sysctlbyname(uinet_instance_t uinst, char *name, char *oldp, size_t *oldplen,
+int   uinet_sysctlbyname(uinet_instance_t uinst, const char *name, char *oldp, size_t *oldplen,
 			 const char *newp, size_t newplen, size_t *retval, int flags);
-int   uinet_sysctl(uinet_instance_t uinst, int *name, u_int namelen, void *oldp, size_t *oldplen,
+int   uinet_sysctl(uinet_instance_t uinst, const int *name, u_int namelen, void *oldp, size_t *oldplen,
 		   const void *newp, size_t newplen, size_t *retval, int flags);
 void  uinet_synfilter_getconninfo(uinet_api_synfilter_cookie_t cookie, struct uinet_in_conninfo *inc);
 void  uinet_synfilter_getl2info(uinet_api_synfilter_cookie_t cookie, struct uinet_in_l2info *l2i);
@@ -244,6 +244,13 @@ void uinet_instance_default_cfg(struct uinet_instance_cfg *cfg);
 uinet_instance_t uinet_instance_create(struct uinet_instance_cfg *cfg);
 uinet_instance_t uinet_instance_default(void);
 void uinet_instance_destroy(uinet_instance_t uinst);
+
+#define UINET_BATCH_EVENT_START  0
+#define UINET_BATCH_EVENT_FINISH 1
+
+int uinet_if_set_batch_event_handler(uinet_if_t uif,
+				     void (*handler)(void *arg, int event),
+				     void *arg);
 
 #ifdef __cplusplus
 }

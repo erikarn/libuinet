@@ -773,7 +773,7 @@ ether_input_internal(struct ifnet *ifp, struct mbuf *m)
 		struct in_l2info *l2info;
 		struct in_l2tagstack *l2ts;
 
-		l2info_tag = if_promsicinet_tag_alloc();
+		l2info_tag = if_promiscinet_tag_alloc();
 		if (NULL == l2info_tag) {
 #ifdef DIAGNOSTIC
 			if_printf(ifp, "cannot allocate MTAG_PROMISCINET_L2INFO\n");
@@ -791,8 +791,8 @@ ether_input_internal(struct ifnet *ifp, struct mbuf *m)
 
 		ETHER_ADDR_COPY(l2info->inl2i_local_addr, eh->ether_dhost);
 		ETHER_ADDR_COPY(l2info->inl2i_foreign_addr, eh->ether_shost);
-		l2ts->inl2t_cnt = 0;
 		l2info->inl2i_flags = 0;
+		l2ts->inl2t_cnt = 0;
 
 		/*
 		 * Handle the bridge mbuf flags to set interface directionality.

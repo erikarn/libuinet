@@ -1335,7 +1335,7 @@ uinet_synfilter_install(struct uinet_socket *so, uinet_api_synfilter_callback_t 
 
 
 int
-uinet_sysctlbyname(uinet_instance_t uinst, char *name, char *oldp, size_t *oldplen,
+uinet_sysctlbyname(uinet_instance_t uinst, const char *name, char *oldp, size_t *oldplen,
     const char *newp, size_t newplen, size_t *retval, int flags)
 {
 	int error;
@@ -1349,7 +1349,7 @@ uinet_sysctlbyname(uinet_instance_t uinst, char *name, char *oldp, size_t *oldpl
 
 
 int
-uinet_sysctl(uinet_instance_t uinst, int *name, u_int namelen, void *oldp, size_t *oldplen,
+uinet_sysctl(uinet_instance_t uinst, const int *name, u_int namelen, void *oldp, size_t *oldplen,
     const void *newp, size_t newplen, size_t *retval, int flags)
 {
 	int error;
@@ -1631,9 +1631,7 @@ uinet_instance_default(void)
 void
 uinet_instance_shutdown(uinet_instance_t uinst)
 {
-#ifdef VIMAGE
 	uinet_ifdestroy_all(uinst);
-#endif
 }
 
 

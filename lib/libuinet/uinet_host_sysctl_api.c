@@ -344,7 +344,7 @@ passive_sysctl_reqtype_str(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 	 * passes in a NULL buffer and NULL oidlenp.
 	 */
 	us->error = uinet_sysctlbyname(uinet_instance_default(),
-	    (char *) req_str,
+	    req_str,
 	    us->oldp,
 	    us->oldp == NULL ? NULL : &us->wbuf_len,
 	    us->sbuf,
@@ -432,7 +432,7 @@ passive_sysctl_reqtype_oid(int ns, nvlist_t *nvl, struct u_sysctl_state_t *us)
 	 * passes in a NULL buffer and NULL oidlenp.
 	 */
 	us->error = uinet_sysctl(uinet_instance_default(),
-	    (int *) req_oid,
+	    req_oid,
 	    req_oid_len / sizeof(int),
 	    us->oldp,
 	    us->oldp == NULL ? NULL : &us->wbuf_len,

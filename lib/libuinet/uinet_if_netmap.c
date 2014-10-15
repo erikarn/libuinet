@@ -99,15 +99,6 @@ struct if_netmap_bufinfo_pool {
 };
 
 
-struct if_netmap_stoppable_thread {
-	struct thread *thr;
-	int last_stop_check;
-	struct mtx stop_lock;
-	struct cv stop_cv;
-	int stop;
-};
-
-
 struct if_netmap_softc {
 	struct ifnet *ifp;
 	const struct uinet_if *uif;
@@ -125,8 +116,8 @@ struct if_netmap_softc {
 
 	int stop_check_ticks;
 
-	struct if_netmap_stoppable_thread tx_thread;
-	struct if_netmap_stoppable_thread rx_thread;
+	struct thread *tx_thread;
+	struct thread *rx_thread;
 
 	struct mtx tx_lock;
 	struct cv tx_cv;
@@ -139,60 +130,6 @@ static int if_netmap_setup_interface(struct if_netmap_softc *sc);
 
 
 static unsigned int interface_count;
-
-
-static void
-if_netmap_stoppable_thread_init(struct if_netmap_stoppable_thread *sthr, const char *prefix)
-{
-	char desc[32];
-	
-	sthr->thr = NULL;
-	sthr->last_stop_check = 0;
-	snprintf(desc, sizeof(desc), "%sstplk", prefix ? prefix : "");
-	mtx_init(&sthr->stop_lock, desc, NULL, MTX_DEF);
-	snprintf(desc, sizeof(desc), "%sstpcv", prefix ? prefix : "");
-	cv_init(&sthr->stop_cv, desc);
-	sthr->stop = 0;
-}
-
-
-static int
-if_netmap_stoppable_thread_check(struct if_netmap_stoppable_thread *sthr)
-{
-	int done = 0;
-
-	mtx_lock(&sthr->stop_lock);
-	if (sthr->stop)
-		done = 1;
-	mtx_unlock(&sthr->stop_lock);
-	sthr->last_stop_check = ticks;
-
-	return (done);
-}
-
-
-static void
-if_netmap_stoppable_thread_done(struct if_netmap_stoppable_thread *sthr)
-{
-	mtx_lock(&sthr->stop_lock);
-	sthr->stop = 0;
-	cv_signal(&sthr->stop_cv);
-	mtx_unlock(&sthr->stop_lock);
-}
-
-
-static void
-if_netmap_stoppable_thread_stop(struct if_netmap_stoppable_thread *sthr)
-{
-	mtx_lock(&sthr->stop_lock);
-	sthr->stop = 1;
-	mtx_unlock(&sthr->stop_lock);
-
-	mtx_lock(&sthr->stop_lock);
-	while (sthr->stop)
-		cv_wait(&sthr->stop_cv, &sthr->stop_lock);
-	mtx_unlock(&sthr->stop_lock);
-}
 
 
 static int
@@ -425,9 +362,6 @@ if_netmap_attach(struct uinet_if *uif)
 	if (sc->stop_check_ticks == 0)
 		sc->stop_check_ticks = 1;
 
-	if_netmap_stoppable_thread_init(&sc->tx_thread, "tx");
-	if_netmap_stoppable_thread_init(&sc->rx_thread, "rx");
-
 	sc->nm_host_ctx = if_netmap_register_if(sc->fd, sc->host_ifname, sc->isvale, sc->queue);
 	if (NULL == sc->nm_host_ctx) {
 		printf("Failed to register netmap interface\n");
@@ -547,26 +481,21 @@ if_netmap_send(void *arg)
 	int rv;
 	int done;
 	int pkts_sent;
+	int poll_wait_ms;
 
 	if (sc->uif->cpu >= 0)
-		sched_bind(sc->tx_thread.thr, sc->uif->cpu);
+		sched_bind(sc->tx_thread, sc->uif->cpu);
 
-	rv = if_netmap_txsync(sc->nm_host_ctx, NULL, NULL);
-	if (rv == -1) {
-		printf("could not sync tx descriptors before transmit\n");
-	}
-
-	avail = if_netmap_txavail(sc->nm_host_ctx);
-
-	sc->tx_thread.last_stop_check = ticks;
 	done = 0;
 	pkts_sent = 0;
+	avail = 0;
+	poll_wait_ms = (sc->tx_thread->td_stop_check_ticks * 1000) / hz;
 	do {
 		mtx_lock(&sc->tx_lock);
 		sc->tx_pkts_to_send -= pkts_sent;
 		while ((sc->tx_pkts_to_send == 0) && !done)
-			if (EWOULDBLOCK == cv_timedwait(&sc->tx_cv, &sc->tx_lock, sc->stop_check_ticks))
-				done = if_netmap_stoppable_thread_check(&sc->tx_thread);
+			if (EWOULDBLOCK == cv_timedwait(&sc->tx_cv, &sc->tx_lock, sc->tx_thread->td_stop_check_ticks))
+				done = kthread_stop_check();
 		mtx_unlock(&sc->tx_lock);
 	
 		if (done)
@@ -582,19 +511,16 @@ if_netmap_send(void *arg)
 				pfd.fd = sc->fd;
 				pfd.events = UHI_POLLOUT;
 				
-				rv = uhi_poll(&pfd, 1, IF_NETMAP_THREAD_STOP_CHECK_MS);
+				rv = uhi_poll(&pfd, 1, poll_wait_ms);
 				if (rv == 0)
-					done = if_netmap_stoppable_thread_check(&sc->tx_thread);	
+					done = kthread_stop_check();	
 				else if (rv == -1)
 					printf("error from poll for transmit\n");
 					
 				avail = if_netmap_txavail(sc->nm_host_ctx);
 			}
 
-			if (ticks - sc->tx_thread.last_stop_check >= sc->stop_check_ticks)
-				done = if_netmap_stoppable_thread_check(&sc->tx_thread);
-
-			if (done)
+			if (done || (done = kthread_stop_check()))
 				break;
 
 			cur = if_netmap_txcur(sc->nm_host_ctx);
@@ -615,16 +541,18 @@ if_netmap_send(void *arg)
 				IFQ_DRV_DEQUEUE(&ifp->if_snd, m);
 			}
 
-			rv = if_netmap_txsync(sc->nm_host_ctx, &avail, &cur);
-			if (rv == -1) {
+		}
+
+		if (pkts_sent) {
+			while (EBUSY == (rv = if_netmap_txsync(sc->nm_host_ctx, &avail, &cur)));
+			if (rv != 0) {
 				printf("could not sync tx descriptors after transmit\n");
 			}
 			avail = if_netmap_txavail(sc->nm_host_ctx);
 		}
-
 	} while (!done);
 
-	if_netmap_stoppable_thread_done(&sc->tx_thread);
+	kthread_stop_ack();
 }
 
 
@@ -724,6 +652,7 @@ if_netmap_receive(void *arg)
 	unsigned int n;
 	int rv;
 	int done;
+	int poll_wait_ms;
 
 
 	/* Zero-copy receive
@@ -753,17 +682,13 @@ if_netmap_receive(void *arg)
 	ifp = sc->ifp;
 
 	if (sc->uif->cpu >= 0)
-		sched_bind(sc->rx_thread.thr, sc->uif->cpu);
+		sched_bind(sc->rx_thread, sc->uif->cpu);
 
-	rv = if_netmap_rxsync(sc->nm_host_ctx, NULL, NULL, NULL);
-	if (rv == -1)
-		printf("could not sync rx descriptors before receive loop\n");
+	reserved = 0;
+	sc->hw_rx_rsvd_begin = 0;
 
-	reserved = if_netmap_rxreserved(sc->nm_host_ctx);
-	sc->hw_rx_rsvd_begin = if_netmap_rxcur(sc->nm_host_ctx);
-
-	sc->rx_thread.last_stop_check = ticks;
 	done = 0;
+	poll_wait_ms = (sc->tx_thread->td_stop_check_ticks * 1000) / hz;
 	for (;;) {
 		while (!done && (0 == (avail = if_netmap_rxavail(sc->nm_host_ctx)))) {
 			memset(&pfd, 0, sizeof pfd);
@@ -771,22 +696,20 @@ if_netmap_receive(void *arg)
 			pfd.fd = sc->fd;
 			pfd.events = UHI_POLLIN;
 
-			rv = uhi_poll(&pfd, 1, IF_NETMAP_THREAD_STOP_CHECK_MS);
+			rv = uhi_poll(&pfd, 1, poll_wait_ms);
 			if (rv == 0) {
-				done = if_netmap_stoppable_thread_check(&sc->rx_thread);
+				done = kthread_stop_check();
 			} else if (rv == -1)
 				printf("error from poll for receive\n");
 		}
 
-		if (ticks - sc->rx_thread.last_stop_check >= sc->stop_check_ticks) {
-			done = if_netmap_stoppable_thread_check(&sc->rx_thread);
-		}
-
-		if (done)
+		if (done || kthread_stop_check())
 			break;
 
 		cur = if_netmap_rxcur(sc->nm_host_ctx);
 		new_reserved = 0;
+		if (sc->uif->batch_event_handler)
+			sc->uif->batch_event_handler(sc->uif->batch_event_handler_arg, UINET_BATCH_EVENT_START);
 		for (n = 0; n < avail; n++) {
 			slotbuf = if_netmap_rxslot(sc->nm_host_ctx, &cur, &pktlen, &slotindex);
 
@@ -847,20 +770,20 @@ if_netmap_receive(void *arg)
 			}
 		}
 
-		avail -= n;
+		if (sc->uif->batch_event_handler)
+			sc->uif->batch_event_handler(sc->uif->batch_event_handler_arg, UINET_BATCH_EVENT_FINISH);
+
+		avail = 0;
 		reserved += new_reserved;
 
 		/* Return any netmap buffers freed by the stack to the ring */
 		returned = if_netmap_sweep_trail(sc);
 		reserved -= returned;
 
-		rv = if_netmap_rxsync(sc->nm_host_ctx, &avail, &cur, &reserved);
-		if (rv == -1)
-			printf("could not sync rx descriptors after receive\n");
-
+		if_netmap_rxupdate(sc->nm_host_ctx, &avail, &cur, &reserved);
 	}
 
-	if_netmap_stoppable_thread_done(&sc->rx_thread);
+	kthread_stop_ack();
 }
 
 
@@ -894,7 +817,7 @@ if_netmap_setup_interface(struct if_netmap_softc *sc)
 	mtx_init(&sc->tx_lock, "txlk", NULL, MTX_DEF);
 	cv_init(&sc->tx_cv, "txcv");
 
-	if (kthread_add(if_netmap_send, sc, NULL, &sc->tx_thread.thr, 0, 0, "nm_tx: %s", ifp->if_xname)) {
+	if (kthread_add(if_netmap_send, sc, NULL, &sc->tx_thread, 0, 0, "nm_tx: %s", ifp->if_xname)) {
 		printf("Could not start transmit thread for %s (%s)\n", ifp->if_xname, sc->host_ifname);
 		ether_ifdetach(ifp);
 		if_free(ifp);
@@ -902,7 +825,7 @@ if_netmap_setup_interface(struct if_netmap_softc *sc)
 	}
 
 
-	if (kthread_add(if_netmap_receive, sc, NULL, &sc->rx_thread.thr, 0, 0, "nm_rx: %s", ifp->if_xname)) {
+	if (kthread_add(if_netmap_receive, sc, NULL, &sc->rx_thread, 0, 0, "nm_rx: %s", ifp->if_xname)) {
 		printf("Could not start receive thread for %s (%s)\n", ifp->if_xname, sc->host_ifname);
 		ether_ifdetach(ifp);
 		if_free(ifp);
@@ -922,12 +845,17 @@ if_netmap_detach(struct uinet_if *uif)
 	uint32_t unused;
 	uint32_t bufindex, bufindex2;
 	uint32_t ring_size;
+	struct thread_stop_req rx_tsr;
+	struct thread_stop_req tx_tsr;
 
 	if (sc) {
 		printf("%s (%s): Stopping rx thread\n", uif->name, uif->alias[0] != '\0' ? uif->alias : "");
-		if_netmap_stoppable_thread_stop(&sc->rx_thread);
+		kthread_stop(sc->rx_thread, &rx_tsr);
 		printf("%s (%s): Stopping tx thread\n", uif->name, uif->alias[0] != '\0' ? uif->alias : "");
-		if_netmap_stoppable_thread_stop(&sc->tx_thread);
+		kthread_stop(sc->tx_thread, &tx_tsr);
+
+		kthread_stop_wait(&rx_tsr);
+		kthread_stop_wait(&tx_tsr);
 		printf("%s (%s): Interface threads stopped\n", uif->name, uif->alias[0] != '\0' ? uif->alias : "");
 
 		if (sc->nm_buffer_indices) {

@@ -5,7 +5,6 @@
 LDADD+= -lpthread
 ifeq ($(shell uname -s),Linux)
 LDADD+= -lrt
-LDADD+= -lcrypto
 else
 LDADD+= -lssl
 endif

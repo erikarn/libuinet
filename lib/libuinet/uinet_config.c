@@ -275,3 +275,20 @@ uinet_ifgenericname(uinet_if_t uif)
 {
 	return (uif ? uif->name : "");
 }
+
+
+int
+uinet_if_set_batch_event_handler(uinet_if_t uif,
+				 void (*handler)(void *arg, int event),
+				 void *arg)
+{
+	int error = EINVAL;
+
+	if (NULL != uif) {
+		uif->batch_event_handler = handler;
+		uif->batch_event_handler_arg = arg;
+		error = 0;
+	}
+
+	return (error);
+}
