@@ -59,6 +59,7 @@ extern struct uinet_instance uinst0;
 
 void uinet_ifdestroy_all(struct uinet_instance *uinst);
 struct uinet_if *uinet_iffind_byname(const char *ifname);
+struct ifnet * uinet_ifp_ref_byalias(const char *ifalias);
 
 int uinet_instance_init(struct uinet_instance *uinst, struct vnet *vnet, struct uinet_instance_cfg *cfg);
 void uinet_instance_shutdown(uinet_instance_t uinst);

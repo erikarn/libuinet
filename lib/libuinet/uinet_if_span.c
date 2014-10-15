@@ -204,7 +204,7 @@ if_span_addm(struct if_span_softc *sc, const char *ifname)
 	int error = 0;
 
 	/* Do lookup */
-	nifp = ifunit_ref(ifname);
+	nifp = uinet_ifp_ref_byalias(ifname);
 	if (nifp == NULL) {
 		printf("%s: '%s' not found\n",
 		    __func__,

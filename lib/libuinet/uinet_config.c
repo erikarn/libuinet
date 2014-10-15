@@ -65,6 +65,27 @@ uinet_iffind_byname(const char *ifname)
 	return (uif);
 }
 
+struct ifnet *
+uinet_ifp_ref_byalias(const char *ifalias)
+{
+	struct uinet_if *uif;
+
+	TAILQ_FOREACH(uif, &V_uinet_if_list, link) {
+		if (0 == strcmp(ifalias, uif->name)) {
+			break;
+		}
+
+		if (('\0' != uif->alias[0]) && (0 == strcmp(ifalias, uif->alias))) {
+			break;
+		}
+	}
+
+	if (uif != NULL) {
+		return (ifunit_ref(uif->name));
+	}
+	return (NULL);
+}
+
 
 static struct uinet_if *
 uinet_iffind_bycdom(unsigned int cdom)
